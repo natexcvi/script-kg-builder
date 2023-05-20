@@ -28,16 +28,6 @@ var rootCmd = &cobra.Command{
 	Args: cobra.ExactArgs(1),
 }
 
-func init() {
-	rootCmd.PersistentFlags().IntVarP(&totalTokenLimit, "total-token-limit", "l", 10000, "total token limit for OpenAI engine")
-}
-
-func main() {
-	if err := rootCmd.Execute(); err != nil {
-		log.Fatalf("could not execute root command: %v", err)
-	}
-}
-
 func runner() {
 	log.SetLevel(log.DebugLevel)
 	graph := &kg.KnowledgeGraph{
@@ -62,5 +52,15 @@ func runner() {
 	}
 	if err := os.WriteFile(path.Join("results", "12_years_a_slave.txt"), []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
 		log.Fatalf("could not write graph encoding: %v", err)
+	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().IntVarP(&totalTokenLimit, "total-token-limit", "l", 10000, "total token limit for OpenAI engine")
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatalf("could not execute root command: %v", err)
 	}
 }
