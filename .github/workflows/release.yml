@@ -45,11 +45,9 @@ jobs:
           mv script-kg-builder_linux_arm64 artifacts/
           tar -czvf script-kg-builder_artifacts.tar.gz artifacts/
 
-      - name: Attach Artifacts to Release
-        uses: actions/upload-release-asset@v1
+      - name: Upload binaries
+        uses: AButler/upload-release-assets@v2.0
         with:
-          asset_path: artifacts/
-          asset_name: script-kg-builder_${{ github.event.release.tag_name }}_${
-            { runner.os }}_${{ env.GOARCH }}
-          tag_name: ${{ github.event.release.tag_name }}
-          release_id: ${{ github.event.release.id }}
+          files: 'artifacts/*'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          release-tag: ${{ github.event.release.tag_name }}
