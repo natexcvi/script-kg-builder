@@ -37,7 +37,7 @@ func ParseKGEdge(s string) (*KGEdge, error) {
 	edgeExpr := regexp.MustCompile(`\(([^,]+), ([^,]+), ([^,]+)\)`)
 	matches := edgeExpr.FindStringSubmatch(s)
 	if matches == nil {
-		return nil, fmt.Errorf("invalid edge: %q", s)
+		return nil, fmt.Errorf("invalid edge: %q - edges must be represented as (head, relation, tail) triplets", s)
 	}
 	return &KGEdge{
 		Head:     matches[1],

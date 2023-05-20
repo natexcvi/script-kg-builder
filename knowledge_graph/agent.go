@@ -100,7 +100,7 @@ func LearnNewEdges(existingKG *KnowledgeGraph, scene *Scene) ([]*KGEdge, error) 
 			}, nil
 		},
 	}
-	agent := agents.NewChainAgent(engine, task, memory.NewBufferedMemory(10)).WithMaxSolutionAttempts(12)
+	agent := agents.NewChainAgent(engine, task, memory.NewBufferedMemory(10)).WithMaxSolutionAttempts(5).WithRestarts(3)
 	newGraph, err := agent.Run(&KGBuilderInput{
 		Scene:      scene,
 		ExistingKG: &KnowledgeGraph{},

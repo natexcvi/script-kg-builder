@@ -32,6 +32,8 @@ github.com/natexcvi/go-llm v0.0.0-20230515123319-21597589236a h1:mtSkjk5pt/Ox5lx
 github.com/natexcvi/go-llm v0.0.0-20230515123319-21597589236a/go.mod h1:pHYHAkoT/lCOCn4m6idmtxWT5pVkuK8z8j9OMQ1QADE=
 github.com/natexcvi/go-llm v0.0.0-20230515124130-59c438a27b70 h1:+0bhE9A5j3341tXDb4iwnyyZz/lQjfR4a+lQcF5R6Xw=
 github.com/natexcvi/go-llm v0.0.0-20230515124130-59c438a27b70/go.mod h1:pHYHAkoT/lCOCn4m6idmtxWT5pVkuK8z8j9OMQ1QADE=
+github.com/natexcvi/go-llm v0.0.0-20230515143615-c150200f8a36 h1:QLuzL60sgNh3rX5kfQYEN+AdOtdqW1ruxkoz1cm1aQ4=
+github.com/natexcvi/go-llm v0.0.0-20230515143615-c150200f8a36/go.mod h1:pHYHAkoT/lCOCn4m6idmtxWT5pVkuK8z8j9OMQ1QADE=
 github.com/playwright-community/playwright-go v0.2000.1 h1:2JViSHpJQ/UL/PO1Gg6gXV5IcXAAsoBJ3KG9L3wKXto=
 github.com/playwright-community/playwright-go v0.2000.1/go.mod h1:1y9cM9b9dVHnuRWzED1KLM7FtbwTJC8ibDjI6MNqewU=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

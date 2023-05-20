@@ -3,7 +3,7 @@ module github.com/natexcvi/script-kg-builder
 go 1.19
 
 require (
-	github.com/natexcvi/go-llm v0.0.0-20230515124130-59c438a27b70
+	github.com/natexcvi/go-llm v0.0.0-20230515143615-c150200f8a36
 	github.com/samber/lo v1.38.1
 	github.com/sirupsen/logrus v1.9.0
 )
