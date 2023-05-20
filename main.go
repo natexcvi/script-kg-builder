@@ -18,22 +18,22 @@ func main() {
 	}
 	script, err := kg.LoadScript("scripts/12_years_a_slave")
 	if err != nil {
-		panic(err)
+		log.Fatalf("could not load script: %v", err)
 	}
 	for _, scene := range script.Scenes {
 		newEdges, err := kg.LearnNewEdges(graph, scene)
 		if err != nil {
-			panic(err)
+			log.Fatalf("could not learn new edges: %v", err)
 		}
 		graph.Edges = append(graph.Edges, newEdges...)
 	}
 	fmt.Println(graph.Encode())
 	if _, err := os.Stat("results"); os.IsNotExist(err) {
 		if err := os.Mkdir("results", 0755); err != nil {
-			panic(err)
+			log.Fatalf("could not create results directory: %v", err)
 		}
 	}
 	if err := os.WriteFile(path.Join("results", "12_years_a_slave.txt"), []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
-		panic(err)
+		log.Fatalf("could not write graph encoding: %v", err)
 	}
 }
