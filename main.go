@@ -19,6 +19,11 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "script-kg-builder SCRIPT_DIR",
 	Short: "script-kg-builder is a tool for building knowledge graphs from movie scripts",
+	Long: `script-kg-builder is a tool for building knowledge graphs from movie scripts.
+The script directory should contain a set of files named <scene number>.txt, where
+<scene number> is the chronological order of the scene in the movie. For example,
+the first scene in the movie should be named 1.txt, the second scene should be named
+2.txt, and so on. The script directory should not contain any other files.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey == "" {
 			log.Fatal("OPENAI_API_KEY environment variable must be set")
