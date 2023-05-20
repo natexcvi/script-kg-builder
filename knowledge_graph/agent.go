@@ -23,8 +23,8 @@ func (i *KGBuilderInput) Schema() string {
 	return "<representation of the already learned knowledge graph>\n<text of the current scene>"
 }
 
-func LearnNewEdges(existingKG *KnowledgeGraph, scene *Scene) ([]*KGEdge, error) {
-	engine := engines.NewGPTEngine(os.Getenv("OPENAI_API_KEY"), "gpt-3.5-turbo")
+func LearnNewEdges(existingKG *KnowledgeGraph, scene *Scene, totalTokenLimit int) ([]*KGEdge, error) {
+	engine := engines.NewGPTEngine(os.Getenv("OPENAI_API_KEY"), "gpt-3.5-turbo").WithTotalTokenLimit(totalTokenLimit)
 	task := &agents.Task[*KGBuilderInput, *KnowledgeGraph]{
 		Description: "The task involves learning knowledge graphs " +
 			"from screenplays. You are given a knowledge graph and a new " +
