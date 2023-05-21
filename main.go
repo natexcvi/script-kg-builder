@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path"
 	"strings"
 
 	kg "github.com/natexcvi/script-kg-builder/knowledge_graph"
@@ -17,7 +16,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "script-kg-builder SCRIPT_DIR",
+	Use:   "script-kg-builder SCRIPT_DIR OUTPUT_FILE",
 	Short: "script-kg-builder is a tool for building knowledge graphs from movie scripts",
 	Long: `script-kg-builder is a tool for building knowledge graphs from movie scripts.
 The script directory should contain a set of files named <scene number>.txt, where
@@ -28,17 +27,46 @@ the first scene in the movie should be named 1.txt, the second scene should be n
 		if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey == "" {
 			log.Fatal("OPENAI_API_KEY environment variable must be set")
 		}
-		runner()
+		scriptDir := args[0]
+		if err := validateDirectory(scriptDir); err != nil {
+			log.Fatalf("invalid script directory: %v", err)
+		}
+		outputFile := args[1]
+		if err := validateOutputFilePath(outputFile); err != nil {
+			log.Fatalf("invalid output file path: %v", err)
+		}
+		runner(scriptDir, outputFile)
 	},
-	Args: cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(2),
 }
 
-func runner() {
+func validateDirectory(dir string) error {
+	fInfo, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !fInfo.IsDir() {
+		return fmt.Errorf("%q is not a directory", dir)
+	}
+	return nil
+}
+
+func validateOutputFilePath(filePath string) error {
+	if _, err := os.Stat(filePath); err == nil {
+		return fmt.Errorf("%q already exists", filePath)
+	}
+	if _, err := os.Create(filePath); err != nil {
+		return fmt.Errorf("could not create file %q: %w", filePath, err)
+	}
+	return nil
+}
+
+func runner(scriptDir, outputFile string) {
 	log.SetLevel(log.DebugLevel)
 	graph := &kg.KnowledgeGraph{
 		Edges: []*kg.KGEdge{},
 	}
-	script, err := kg.LoadScript("scripts/12_years_a_slave")
+	script, err := kg.LoadScript(scriptDir)
 	if err != nil {
 		log.Fatalf("could not load script: %v", err)
 	}
@@ -55,7 +83,7 @@ func runner() {
 			log.Fatalf("could not create results directory: %v", err)
 		}
 	}
-	if err := os.WriteFile(path.Join("results", "12_years_a_slave.txt"), []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
+	if err := os.WriteFile(outputFile, []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
 		log.Fatalf("could not write graph encoding: %v", err)
 	}
 }
