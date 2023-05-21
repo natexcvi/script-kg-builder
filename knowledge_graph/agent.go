@@ -35,6 +35,11 @@ func LearnNewEdges(existingKG *KnowledgeGraph, scene *Scene, totalTokenLimit int
 			"strings that do not contain commas. Try to use existing relation " +
 			"kinds if appropriate, and use a new kind of relation only if you " +
 			"can't find an existing one that fits the relation you detect. " +
+			"Make sure you don't add duplicate edges to the knowledge graph. " +
+			"Try to focus on the most important relations in the scene, " +
+			"and keep in mind the knowledge graph should represent the " +
+			"entire screenplay, so don't add edges for small details that " +
+			"aren't important to the plot. " +
 			"Your output should be a list of new triplets to add to the " +
 			"knowledge graph. ",
 		Examples: []agents.Example[*KGBuilderInput, *KnowledgeGraph]{

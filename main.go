@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	kg "github.com/natexcvi/script-kg-builder/knowledge_graph"
 
@@ -61,6 +60,21 @@ func validateOutputFilePath(filePath string) error {
 	return nil
 }
 
+func appendSceneEdgesToFile(edges []*kg.KGEdge, outputFile string) error {
+	f, err := os.OpenFile(outputFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("could not open file %q: %w", outputFile, err)
+	}
+	defer f.Close()
+	for _, edge := range edges {
+		if _, err := f.WriteString(fmt.Sprintf("%s\n", edge.String())); err != nil {
+			return fmt.Errorf("could not write edge to file %q: %w", outputFile, err)
+		}
+	}
+	f.WriteString("---\n")
+	return nil
+}
+
 func runner(scriptDir, outputFile string) {
 	log.SetLevel(log.DebugLevel)
 	graph := &kg.KnowledgeGraph{
@@ -76,16 +90,13 @@ func runner(scriptDir, outputFile string) {
 			log.Fatalf("could not learn new edges: %v", err)
 		}
 		graph.Edges = append(graph.Edges, newEdges...)
-	}
-	fmt.Println(graph.Encode())
-	if _, err := os.Stat("results"); os.IsNotExist(err) {
-		if err := os.Mkdir("results", 0755); err != nil {
-			log.Fatalf("could not create results directory: %v", err)
+		if err := appendSceneEdgesToFile(newEdges, outputFile); err != nil {
+			log.Fatalf("could not append scene edges to file: %v", err)
 		}
 	}
-	if err := os.WriteFile(outputFile, []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
-		log.Fatalf("could not write graph encoding: %v", err)
-	}
+	// if err := os.WriteFile(outputFile, []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
+	// 	log.Fatalf("could not write graph encoding: %v", err)
+	// }
 }
 
 func init() {
