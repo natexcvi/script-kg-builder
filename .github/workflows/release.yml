@@ -1,0 +1,54 @@
+name: Release
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build for multiple platforms
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.19
+      
+      - name: Prepare
+        run: go mod tidy
+
+      - name: Build for Windows AMD64
+        run: GOOS=windows GOARCH=amd64 go build -o script-kg-builder_windows_amd64.exe
+
+      - name: Build for MacOS Intel
+        run: GOOS=darwin GOARCH=amd64 go build -o script-kg-builder_macos_amd64
+
+      - name: Build for MacOS ARM
+        run: GOOS=darwin GOARCH=arm64 go build -o script-kg-builder_macos_arm64
+
+      - name: Build for Linux Intel
+        run: GOOS=linux GOARCH=amd64 go build -o script-kg-builder_linux_amd64
+
+      - name: Build for Linux ARM
+        run: GOOS=linux GOARCH=arm64 go build -o script-kg-builder_linux_arm64
+
+      - name: Archive artifacts
+        run: |
+          mkdir artifacts
+          mv script-kg-builder_windows_amd64.exe artifacts/
+          mv script-kg-builder_macos_amd64 artifacts/
+          mv script-kg-builder_macos_arm64 artifacts/
+          mv script-kg-builder_linux_amd64 artifacts/
+          mv script-kg-builder_linux_arm64 artifacts/
+          tar -czvf script-kg-builder_artifacts.tar.gz artifacts/
+
+      - name: Upload binaries
+        uses: AButler/upload-release-assets@v2.0
+        with:
+          files: 'artifacts/*'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          release-tag: ${{ github.event.release.tag_name }}
