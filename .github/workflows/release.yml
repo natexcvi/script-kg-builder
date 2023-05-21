@@ -31,10 +31,10 @@ jobs:
         run: GOOS=darwin GOARCH=arm64 go build -o script-kg-builder_macos_arm64
 
       - name: Build for Linux Intel
-        run: GOOS=linux GOARCH=amd64 go build -o script-kg-builder_linux_amd64
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o script-kg-builder_linux_amd64
 
       - name: Build for Linux ARM
-        run: GOOS=linux GOARCH=arm64 go build -o script-kg-builder_linux_arm64
+        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o script-kg-builder_linux_arm64
 
       - name: Archive artifacts
         run: |
