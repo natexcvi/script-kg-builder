@@ -11,11 +11,12 @@ import (
 )
 
 var (
-	totalTokenLimit int
+	totalTokenLimit   int
+	mermaidOutputFile string
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "script-kg-builder SCRIPT_DIR OUTPUT_FILE",
+	Use:   "script-kg-builder script_dir output_file",
 	Short: "script-kg-builder is a tool for building knowledge graphs from movie scripts",
 	Long: `script-kg-builder is a tool for building knowledge graphs from movie scripts.
 The script directory should contain a set of files named <scene number>.txt, where
@@ -94,13 +95,16 @@ func runner(scriptDir, outputFile string) {
 			log.Fatalf("could not append scene edges to file: %v", err)
 		}
 	}
-	// if err := os.WriteFile(outputFile, []byte(strings.Trim(graph.Encode(), "\n")), 0644); err != nil {
-	// 	log.Fatalf("could not write graph encoding: %v", err)
-	// }
+	if mermaidOutputFile != "" {
+		if err := os.WriteFile(mermaidOutputFile, []byte(kg.NewMermaidGraph(graph).String()), 0644); err != nil {
+			log.Fatalf("could not write mermaid graph: %v", err)
+		}
+	}
 }
 
 func init() {
 	rootCmd.PersistentFlags().IntVarP(&totalTokenLimit, "total-token-limit", "l", 10000, "total token limit for OpenAI engine")
+	rootCmd.PersistentFlags().StringVarP(&mermaidOutputFile, "mermaid-output-file", "m", "", "file to write mermaid graph to")
 }
 
 func main() {
