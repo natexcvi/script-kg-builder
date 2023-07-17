@@ -74,7 +74,7 @@ func TestMermaidGraphGeneration(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := NewMermaidGraph(tc.kg).String()
+			got := NewMermaidGraph(tc.kg.Edges).String()
 			assert.Equal(t, tc.want, got)
 		})
 	}

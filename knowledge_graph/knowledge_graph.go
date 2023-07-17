@@ -9,9 +9,9 @@ import (
 )
 
 type KGEdge struct {
-	Head     string
-	Relation string
-	Tail     string
+	Head     string `json:"head"`
+	Relation string `json:"relation"`
+	Tail     string `json:"tail"`
 }
 
 func (e *KGEdge) String() string {
@@ -26,7 +26,9 @@ func (g *KnowledgeGraph) Encode() string {
 	if len(g.Edges) == 0 {
 		return "\n<empty knowledge graph>"
 	}
-	return "\n" + strings.Join(lo.Map(g.Edges, func(e *KGEdge, _ int) string { return e.String() }), "\n")
+	return "\n" + strings.Join(lo.Map(g.Edges, func(e *KGEdge, _ int) string {
+		return strings.TrimSuffix(e.String(), "*")
+	}), "\n")
 }
 
 func (g *KnowledgeGraph) Schema() string {
@@ -37,7 +39,11 @@ func ParseKGEdge(s string) (*KGEdge, error) {
 	edgeExpr := regexp.MustCompile(`\(([^,]+), ([^,]+), ([^,]+)\)`)
 	matches := edgeExpr.FindStringSubmatch(s)
 	if matches == nil {
-		return nil, fmt.Errorf("invalid edge: %q - edges must be represented as (head, relation, tail) triplets", s)
+		return nil, fmt.Errorf(
+			"invalid edge: %q - edges must be represented as "+
+				"`(head, relation, tail)` triplets, with exactly two commas inside the parentheses",
+			s,
+		)
 	}
 	return &KGEdge{
 		Head:     matches[1],

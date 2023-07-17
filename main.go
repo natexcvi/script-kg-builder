@@ -3,9 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
+	"strings"
 
+	"github.com/natexcvi/go-llm/engines"
 	kg "github.com/natexcvi/script-kg-builder/knowledge_graph"
+	"github.com/samber/lo"
 
+	"github.com/schollz/progressbar/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -13,6 +18,9 @@ import (
 var (
 	totalTokenLimit   int
 	mermaidOutputFile string
+	shallow           bool
+	model             string
+	verbose           bool
 )
 
 var rootCmd = &cobra.Command{
@@ -76,8 +84,28 @@ func appendSceneEdgesToFile(edges []*kg.KGEdge, outputFile string) error {
 	return nil
 }
 
+func writeSceneGraph(edges []*kg.KGEdge, outputFile string) error {
+	f, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("could not create file %q: %w", outputFile, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(kg.NewMermaidGraph(edges).String()); err != nil {
+		return fmt.Errorf("could not write mermaid graph to file %q: %w", outputFile, err)
+	}
+	return nil
+}
+
+func createIfNotExists(dir string) error {
+	if _, err := os.Stat(dir); err == nil {
+		return nil
+	}
+	return os.Mkdir(dir, 0755)
+}
+
 func runner(scriptDir, outputFile string) {
-	log.SetLevel(log.DebugLevel)
+	logLevel := lo.If(verbose, log.DebugLevel).Else(log.InfoLevel)
+	log.SetLevel(logLevel)
 	graph := &kg.KnowledgeGraph{
 		Edges: []*kg.KGEdge{},
 	}
@@ -85,8 +113,11 @@ func runner(scriptDir, outputFile string) {
 	if err != nil {
 		log.Fatalf("could not load script: %v", err)
 	}
-	for _, scene := range script.Scenes {
-		newEdges, err := kg.LearnNewEdges(graph, scene, totalTokenLimit)
+	pbar := progressbar.Default(int64(len(script.Scenes)))
+	engine := engines.NewGPTEngine(os.Getenv("OPENAI_API_KEY"), model).WithTotalTokenLimit(totalTokenLimit)
+	agent := kg.NewKGBuilderAgent(engine)
+	for i, scene := range script.Scenes {
+		newEdges, err := agent.LearnNewEdges(graph, scene, lo.If(shallow, kg.KGBuildModeShallow).Else(kg.KGBuildModeDeep))
 		if err != nil {
 			log.Fatalf("could not learn new edges: %v", err)
 		}
@@ -94,9 +125,20 @@ func runner(scriptDir, outputFile string) {
 		if err := appendSceneEdgesToFile(newEdges, outputFile); err != nil {
 			log.Fatalf("could not append scene edges to file: %v", err)
 		}
+		if mermaidOutputFile != "" {
+			graphsDir := strings.TrimSuffix(mermaidOutputFile, path.Ext(mermaidOutputFile))
+			if err := createIfNotExists(graphsDir); err != nil {
+				log.Fatalf("could not create graphs directory: %v", err)
+			}
+			graphsFile := fmt.Sprintf("%s/%d.mmd", graphsDir, i)
+			if err := writeSceneGraph(newEdges, graphsFile); err != nil {
+				log.Fatalf("could not append scene graph to mermaid file: %v", err)
+			}
+		}
+		pbar.Add(1)
 	}
 	if mermaidOutputFile != "" {
-		if err := os.WriteFile(mermaidOutputFile, []byte(kg.NewMermaidGraph(graph).String()), 0644); err != nil {
+		if err := os.WriteFile(mermaidOutputFile, []byte(kg.NewMermaidGraph(graph.Edges).String()), 0644); err != nil {
 			log.Fatalf("could not write mermaid graph: %v", err)
 		}
 	}
@@ -105,6 +147,9 @@ func runner(scriptDir, outputFile string) {
 func init() {
 	rootCmd.PersistentFlags().IntVarP(&totalTokenLimit, "total-token-limit", "l", 10000, "total token limit for OpenAI engine")
 	rootCmd.PersistentFlags().StringVarP(&mermaidOutputFile, "mermaid-output-file", "m", "", "file to write mermaid graph to")
+	rootCmd.PersistentFlags().BoolVarP(&shallow, "shallow", "s", false, "build knowledge graph in shallow mode")
+	rootCmd.PersistentFlags().StringVarP(&model, "model", "M", "gpt-3.5-turbo", "OpenAI chat completion model")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 }
 
 func main() {
