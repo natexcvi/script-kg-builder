@@ -1,0 +1,7 @@
+torch
+transformers
+pillow
+torchvision
+pytest
+matplotlibpandas
+tqdm
