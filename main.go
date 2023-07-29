@@ -85,6 +85,7 @@ where each line represents a single edge in the knowledge graph.`,
 		scn := bufio.NewScanner(f)
 		pbar := progressbar.Default(int64(numLines), "embedding relations")
 		embeddingsMap := make(map[string][]float64)
+		edges := []*kg.KGEdge{}
 		for scn.Scan() {
 			pbar.Describe("parsing kg edge")
 			curLine := scn.Text()
@@ -96,6 +97,7 @@ where each line represents a single edge in the knowledge graph.`,
 				log.Errorf("could not parse kg edge: %v", err)
 				continue
 			}
+			edges = append(edges, edge)
 			pbar.Describe("embedding relation")
 			if _, ok := embeddingsMap[edge.Relation]; ok {
 				continue
@@ -110,12 +112,7 @@ where each line represents a single edge in the knowledge graph.`,
 		pbar.Finish()
 		pbar = progressbar.Default(int64(numLines), "writing embeddings to file")
 		scn = bufio.NewScanner(f)
-		for scn.Scan() {
-			pbar.Describe("parsing kg edge")
-			edge, err := kg.ParseKGEdge(scn.Text())
-			if err != nil {
-				log.Fatalf("could not parse kg edge: %v", err)
-			}
+		for _, edge := range edges {
 			pbar.Describe("writing embeddings to file")
 			if err := writeEmbeddingsToFile(edge, embeddingsMap[edge.Relation], outputFile); err != nil {
 				log.Fatalf("could not write embeddings to file: %v", err)
@@ -123,6 +120,8 @@ where each line represents a single edge in the knowledge graph.`,
 			pbar.Add(1)
 		}
 		pbar.Finish()
+		log.Infof("wrote embeddings to file %q", outputFilePath)
+		log.Infof("total tokens used: %d", embedder.TokensUsed())
 	},
 	Args: cobra.ExactArgs(2),
 }
