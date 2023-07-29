@@ -26,9 +26,28 @@ class CustomDataset(Dataset):
         kg = self.__load_knowledge_graph_with_embeddings(
             "../results/12_years_a_slave.csv"
         )
-        self.pairs = list(tqdm(self.__build_pairs(kg), total=len(kg)))
-        self.texts1 = [pair[0] for pair in self.pairs]
-        self.texts2 = [pair[1] for pair in self.pairs]
+        n = 200
+        pair_gen = self.__build_pairs(kg)
+        pairs = []
+        for _ in tqdm(range(n), total=n):
+            try:
+                pairs.append(next(pair_gen))
+            except StopIteration:
+                break
+        # filter out duplicate pairs, under symmetric relations
+        pairs = list(set([tuple(sorted(pair)) for pair in pairs]))
+        print(pairs)
+        self.texts1 = [pair[0] for pair in pairs]
+        self.texts2 = [pair[1] for pair in pairs]
+        self.labels = [1] * len(pairs)
+
+        # sanity check
+        # self.texts1 = ["Anne"]
+        # self.texts2 = ["Solomon"]
+        # self.labels = [1]
+        # self.texts1.append("Solomon")
+        # self.texts2.append("Alexander")
+        # self.labels.append(-1)
 
     def __load_knowledge_graph_with_embeddings(self, path: str):
         """
@@ -68,10 +87,11 @@ class CustomDataset(Dataset):
         """
         for i, row in kg_df.iterrows():
             for j, row2 in kg_df.iterrows():
-                if i == j:
+                if j <= i:
                     continue
                 if (
-                    self.__relation_similarity(
+                    row["tail"] == row2["tail"]
+                    and self.__relation_similarity(
                         row["relation_embedding"], row2["relation_embedding"]
                     )
                     > 0.90
@@ -93,25 +113,16 @@ class CustomDataset(Dataset):
 def evaluate_model(text_model, text_processor):
     # evaluate the model on a test set
     test_text_data_1 = [
-        "test",
-        "not a test",
-        "test",
-        "not test",
-        "water",
+        "Solomon",
+        "Solomon",
     ]
-    test_text_data_2 = [
-        "experiment",
-        "the real deal",
-        "the real deal",
-        "experiment",
-        "apple",
-    ]
+    test_text_data_2 = ["Anne", "Alexander"]
 
     test_image_data = np.array([[1, 1, 1], [1, 1, 1]])
 
-    test_dataset = CustomDataset(
-        test_image_data, test_text_data_1, test_text_data_2, [1, 1]
-    )
+    # test_dataset = CustomDataset(
+    #     test_image_data, test_text_data_1, test_text_data_2, [1, 1]
+    # )
 
     text_model.eval()
     with torch.no_grad():
