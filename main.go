@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -90,16 +92,19 @@ where each line represents a single edge in the knowledge graph.`,
 			pbar.Describe("parsing kg edge")
 			curLine := scn.Text()
 			if curLine == "---" {
+				pbar.ChangeMax(pbar.GetMax() - 1)
 				continue
 			}
 			edge, err := kg.ParseKGEdge(curLine)
 			if err != nil {
 				log.Errorf("could not parse kg edge: %v", err)
+				pbar.ChangeMax(pbar.GetMax() - 1)
 				continue
 			}
 			edges = append(edges, edge)
 			pbar.Describe("embedding relation")
 			if _, ok := embeddingsMap[edge.Relation]; ok {
+				pbar.Add(1)
 				continue
 			}
 			embeddings, err := embedder.EmbedRelation(edge.Relation)
@@ -110,16 +115,9 @@ where each line represents a single edge in the knowledge graph.`,
 			pbar.Add(1)
 		}
 		pbar.Finish()
-		pbar = progressbar.Default(int64(numLines), "writing embeddings to file")
-		scn = bufio.NewScanner(f)
-		for _, edge := range edges {
-			pbar.Describe("writing embeddings to file")
-			if err := writeEmbeddingsToFile(edge, embeddingsMap[edge.Relation], outputFile); err != nil {
-				log.Fatalf("could not write embeddings to file: %v", err)
-			}
-			pbar.Add(1)
+		if err := writeEmbeddingsToFile(edges, embeddingsMap, outputFile); err != nil {
+			log.Fatalf("could not write embeddings to file: %v", err)
 		}
-		pbar.Finish()
 		log.Infof("wrote embeddings to file %q", outputFilePath)
 		log.Infof("total tokens used: %d", embedder.TokensUsed())
 	},
@@ -156,16 +154,21 @@ func writeEmbeddingsFileHeader(outputFile *os.File) (err error) {
 	return nil
 }
 
-func writeEmbeddingsToFile(edge *kg.KGEdge, embeddings []float64, outputFile *os.File) (err error) {
-	totalWritten := 0
-	for {
-		var n int
-		if n, err = outputFile.WriteString(fmt.Sprintf("%s,%s,%s,%s\n", edge.Head, edge.Relation, strings.TrimSuffix(fmt.Sprintf("%v", embeddings), "]"), edge.Tail)); err != nil {
-			return fmt.Errorf("could not write edge to file: %w", err)
+func writeEmbeddingsToFile(edges []*kg.KGEdge, embeddingsMap map[string][]float64, outputFile *os.File) (err error) {
+	outputWriter := csv.NewWriter(outputFile)
+	defer outputWriter.Flush()
+	for _, edge := range edges {
+		marshaledEmbeddings, err := json.Marshal(embeddingsMap[edge.Relation])
+		if err != nil {
+			return fmt.Errorf("could not marshal embeddings: %w", err)
 		}
-		totalWritten += n
-		if totalWritten == len(edge.String())+len(strings.TrimSuffix(fmt.Sprintf("%v", embeddings), "]"))+2 {
-			break
+		if err := outputWriter.Write([]string{
+			edge.Head,
+			edge.Relation,
+			string(marshaledEmbeddings),
+			edge.Tail,
+		}); err != nil {
+			return fmt.Errorf("could not write embeddings to file: %w", err)
 		}
 	}
 	return nil
