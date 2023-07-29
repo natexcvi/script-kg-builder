@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -46,6 +48,128 @@ the first scene in the movie should be named 1.txt, the second scene should be n
 		runner(scriptDir, outputFile)
 	},
 	Args: cobra.ExactArgs(2),
+}
+
+var embedCmd = &cobra.Command{
+	Use:   "embed kg_file output_csv",
+	Short: "embed is a tool for embedding relations in a knowledge graph",
+	Long: `embed is a tool for embedding relations in a knowledge graph.
+The kg_file should contain a knowledge graph in the following format:
+(head, relation, tail)
+(head, relation, tail)
+...
+where each line represents a single edge in the knowledge graph.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		apiToken := os.Getenv("OPENAI_API_KEY")
+		if apiToken == "" {
+			log.Fatal("OPENAI_API_KEY environment variable must be set")
+		}
+		embedder := kg.NewRelationEmbedder(http.DefaultClient, apiToken)
+		kgFile := args[0]
+		f, err := os.Open(kgFile)
+		if err != nil {
+			log.Fatalf("could not open kg file: %v", err)
+		}
+		defer f.Close()
+		numLines, err := numLinesInFile(kgFile)
+		outputFilePath := args[1]
+		outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatalf("could not open output file: %v", err)
+		}
+		defer outputFile.Close()
+		if err := writeEmbeddingsFileHeader(outputFile); err != nil {
+			log.Fatalf("could not write embeddings file header: %v", err)
+		}
+
+		scn := bufio.NewScanner(f)
+		pbar := progressbar.Default(int64(numLines), "embedding relations")
+		embeddingsMap := make(map[string][]float64)
+		for scn.Scan() {
+			pbar.Describe("parsing kg edge")
+			curLine := scn.Text()
+			if curLine == "---" {
+				continue
+			}
+			edge, err := kg.ParseKGEdge(curLine)
+			if err != nil {
+				log.Errorf("could not parse kg edge: %v", err)
+				continue
+			}
+			pbar.Describe("embedding relation")
+			if _, ok := embeddingsMap[edge.Relation]; ok {
+				continue
+			}
+			embeddings, err := embedder.EmbedRelation(edge.Relation)
+			if err != nil {
+				log.Fatalf("could not embed relation: %v", err)
+			}
+			embeddingsMap[edge.Relation] = embeddings
+			pbar.Add(1)
+		}
+		pbar.Finish()
+		pbar = progressbar.Default(int64(numLines), "writing embeddings to file")
+		scn = bufio.NewScanner(f)
+		for scn.Scan() {
+			pbar.Describe("parsing kg edge")
+			edge, err := kg.ParseKGEdge(scn.Text())
+			if err != nil {
+				log.Fatalf("could not parse kg edge: %v", err)
+			}
+			pbar.Describe("writing embeddings to file")
+			if err := writeEmbeddingsToFile(edge, embeddingsMap[edge.Relation], outputFile); err != nil {
+				log.Fatalf("could not write embeddings to file: %v", err)
+			}
+			pbar.Add(1)
+		}
+		pbar.Finish()
+	},
+	Args: cobra.ExactArgs(2),
+}
+
+func numLinesInFile(filePath string) (int, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("could not open file %q: %w", filePath, err)
+	}
+	defer f.Close()
+	scn := bufio.NewScanner(f)
+	numLines := 0
+	for scn.Scan() {
+		numLines++
+	}
+	return numLines, nil
+}
+
+func writeEmbeddingsFileHeader(outputFile *os.File) (err error) {
+	header := "head,relation,relation_embedding,tail\n"
+	totalWritten := 0
+	for {
+		var n int
+		if n, err = outputFile.WriteString(header); err != nil {
+			return fmt.Errorf("could not write header to file: %w", err)
+		}
+		totalWritten += n
+		if totalWritten == len(header) {
+			break
+		}
+	}
+	return nil
+}
+
+func writeEmbeddingsToFile(edge *kg.KGEdge, embeddings []float64, outputFile *os.File) (err error) {
+	totalWritten := 0
+	for {
+		var n int
+		if n, err = outputFile.WriteString(fmt.Sprintf("%s,%s,%s,%s\n", edge.Head, edge.Relation, strings.TrimSuffix(fmt.Sprintf("%v", embeddings), "]"), edge.Tail)); err != nil {
+			return fmt.Errorf("could not write edge to file: %w", err)
+		}
+		totalWritten += n
+		if totalWritten == len(edge.String())+len(strings.TrimSuffix(fmt.Sprintf("%v", embeddings), "]"))+2 {
+			break
+		}
+	}
+	return nil
 }
 
 func validateDirectory(dir string) error {
@@ -150,6 +274,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&shallow, "shallow", "s", false, "build knowledge graph in shallow mode")
 	rootCmd.PersistentFlags().StringVarP(&model, "model", "M", "gpt-3.5-turbo", "OpenAI chat completion model")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.AddCommand(embedCmd)
 }
 
 func main() {
