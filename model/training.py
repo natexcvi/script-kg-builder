@@ -1,6 +1,7 @@
 import json
 import re
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
@@ -23,10 +24,11 @@ class CustomDataset(Dataset):
         self.texts1 = texts1
         self.texts2 = texts2
         self.labels = labels
-        kg = self.__load_knowledge_graph_with_embeddings(
+        kg_df = self.__load_knowledge_graph_with_embeddings(
             "../results/12_years_a_slave.csv"
         )
         n = 200
+        kg = self.__kg_df_to_graph(kg_df)
         pair_gen = self.__build_pairs(kg)
         pairs = []
         for _ in tqdm(range(n), total=n):
@@ -62,6 +64,50 @@ class CustomDataset(Dataset):
         )
         return df
 
+    def __kg_df_to_graph(self, kg_df):
+        """
+        Convert a knowledge graph to a networkx graph.
+        :param kg_df: the knowledge graph
+        :return: the networkx graph
+        """
+        graph = nx.from_pandas_edgelist(
+            kg_df,
+            "head",
+            "tail",
+            ["relation", "relation_embedding"],
+            create_using=nx.MultiDiGraph(),
+        )
+        return graph
+
+    def __build_pairs(self, kg: nx.Graph, num_hops: int = 2):
+        """
+        Build pairs of entities from the knowledge graph
+        based on symmetric relations. For example, (Tom, plays, football)
+        and (Erica, plays, football) will result in the pair (Tom, Erica).
+        In order to account for more fuzzy relation matching, we will use
+        the cosine similarity between the relation embeddings to determine
+        if two relations are similar enough to be considered symmetric.
+        :param kg: the knowledge graph
+        :param num_hops: the number of hops to consider for symmetric relations
+        :yields: the pairs
+        """
+        # reverse the edges in the knowledge graph
+        kg_rev = nx.reverse(kg, copy=True)
+
+        for pivot in kg_rev.nodes:
+            for neighbor in kg_rev.neighbors(pivot):
+                for neighbor2 in kg_rev.neighbors(pivot):
+                    if neighbor2 == pivot or neighbor == neighbor2:
+                        continue
+                    if (
+                        self.__relation_similarity(
+                            kg_rev[pivot][neighbor][0]["relation_embedding"],
+                            kg_rev[pivot][neighbor2][0]["relation_embedding"],
+                        )
+                        > 0.90
+                    ):
+                        yield (neighbor, neighbor2)
+
     def __relation_similarity(self, relation1, relation2):
         """
         Calculate the cosine similarity between two relation embeddings.
@@ -72,31 +118,6 @@ class CustomDataset(Dataset):
         return np.dot(relation1, relation2) / (
             np.linalg.norm(relation1) * np.linalg.norm(relation2)
         )
-
-    def __build_pairs(self, kg_df):
-        """
-        Build pairs of entities from the knowledge graph
-        based on symmetric relations. For example, (Tom, plays, football)
-        and (Erica, plays, football) will result in the pair (Tom, Erica).
-        In order to account for more fuzzy relation matching, we will use
-        the cosine similarity between the relation embeddings to determine
-        if two relations are similar enough to be considered symmetric.
-
-        :param kg_df: the knowledge graph
-        :return: the pairs
-        """
-        for i, row in kg_df.iterrows():
-            for j, row2 in kg_df.iterrows():
-                if j <= i:
-                    continue
-                if (
-                    row["tail"] == row2["tail"]
-                    and self.__relation_similarity(
-                        row["relation_embedding"], row2["relation_embedding"]
-                    )
-                    > 0.90
-                ):
-                    yield (row["head"], row2["head"])
 
     def __len__(self):
         return len(self.images)
@@ -115,14 +136,9 @@ def evaluate_model(text_model, text_processor):
     test_text_data_1 = [
         "Solomon",
         "Solomon",
+        "Solomon",
     ]
-    test_text_data_2 = ["Anne", "Alexander"]
-
-    test_image_data = np.array([[1, 1, 1], [1, 1, 1]])
-
-    # test_dataset = CustomDataset(
-    #     test_image_data, test_text_data_1, test_text_data_2, [1, 1]
-    # )
+    test_text_data_2 = ["Anne", "Alexander", "Abraham"]
 
     text_model.eval()
     with torch.no_grad():
@@ -139,6 +155,65 @@ def evaluate_model(text_model, text_processor):
             text_embedding_1, text_embedding_2
         )
         print(similarity_scores)
+
+
+class ContrastiveLoss(nn.Module):
+    """
+    Vanilla Contrastive loss, also called InfoNceLoss as in SimCLR paper
+    """
+
+    def __init__(self, batch_size, temperature=0.5):
+        super().__init__()
+        self.batch_size = batch_size
+        self.temperature = temperature
+
+    def __mask(self, batch_size):
+        mask = (~torch.eye(batch_size * 2, batch_size * 2, dtype=bool)).float()
+        return mask
+
+    def calc_similarity_batch(self, a, b):
+        representations = torch.cat([a, b], dim=0)
+        return torch.cosine_similarity(
+            representations.unsqueeze(1), representations.unsqueeze(0), dim=2
+        )
+
+    def forward(self, proj_1, proj_2):
+        """
+        proj_1 and proj_2 are batched embeddings [batch, embedding_dim]
+        where corresponding indices are pairs
+        z_i, z_j in the SimCLR paper
+        """
+        batch_size = proj_1.shape[0]
+        z_i = torch.nn.functional.normalize(proj_1, p=2, dim=1)
+        z_j = torch.nn.functional.normalize(proj_2, p=2, dim=1)
+
+        similarity_matrix = self.calc_similarity_batch(z_i, z_j)
+
+        sim_ij = torch.diag(similarity_matrix, batch_size)
+        sim_ji = torch.diag(similarity_matrix, -batch_size)
+
+        positives = torch.cat([sim_ij, sim_ji], dim=0)
+
+        nominator = torch.exp(positives / self.temperature)
+
+        denominator = self.__mask(batch_size).to(similarity_matrix.device) * torch.exp(
+            similarity_matrix / self.temperature
+        )
+
+        all_losses = -torch.log(nominator / torch.sum(denominator, dim=1))
+        loss = torch.sum(all_losses) / (2 * self.batch_size)
+        return loss
+
+
+def loss_fn(input1, input2, label):
+    """
+    Symmetric contrastive loss function.
+    :param input1: the first input
+    :param input2: the second input
+    :param label: the label
+    """
+    # return 2 - 2 *
+    return nn.CosineEmbeddingLoss()(input1, input2, label)
 
 
 clip_model_name = "openai/clip-vit-base-patch16"
@@ -179,7 +254,7 @@ dataset = CustomDataset(image_data, text_data_1, text_data_2, [1, 1, -1, -1])
 data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 # Define the loss function and optimizer
-criterion = nn.CosineEmbeddingLoss()
+criterion = ContrastiveLoss(batch_size)
 optimizer = optim.AdamW(text_model.parameters(), lr=learning_rate)
 
 # Fine-tuning loop
@@ -192,21 +267,15 @@ for epoch in range(num_epochs):
         # )
         # inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # # The label for CosineEmbeddingLoss is always 1 for positive pairs
-        # labels = torch.ones(inputs["input_ids"].shape[0]).to(device)
-
         optimizer.zero_grad()
 
-        # outputs = clip_model(**inputs, labels=labels)
-        # loss = outputs.loss
-        # loss.backward()
         text_input_1 = text_processor(batch["text1"], return_tensors="pt", padding=True)
         text_input_2 = text_processor(batch["text2"], return_tensors="pt", padding=True)
         loss = criterion(
             text_model(**text_input_1).text_embeds,
             # image_model(batch["pixel_values"]),
             text_model(**text_input_2).text_embeds,
-            batch["label"],
+            # batch["label"],
         )
         loss.backward()
         optimizer.step()
@@ -220,8 +289,6 @@ for epoch in range(num_epochs):
 output_dir = "./fine_tuned_clip_model"
 text_model.save_pretrained(output_dir)
 image_model.save_pretrained(output_dir)
-# clip_model.save_pretrained(output_dir)
-# processor.save_pretrained(output_dir)
 
 print("Fine-tuning complete! Model saved at:", output_dir)
 
