@@ -27,7 +27,7 @@ class CustomDataset(Dataset):
         kg_df = self.__load_knowledge_graph_with_embeddings(
             "../results/12_years_a_slave.csv"
         )
-        n = 200
+        n = 1000
         kg = self.__kg_df_to_graph(kg_df)
         pair_gen = self.__build_pairs(kg)
         pairs = []
@@ -99,14 +99,18 @@ class CustomDataset(Dataset):
                 for neighbor2 in kg_rev.neighbors(pivot):
                     if neighbor2 == pivot or neighbor == neighbor2:
                         continue
-                    if (
-                        self.__relation_similarity(
-                            kg_rev[pivot][neighbor][0]["relation_embedding"],
-                            kg_rev[pivot][neighbor2][0]["relation_embedding"],
-                        )
-                        > 0.90
-                    ):
-                        yield (neighbor, neighbor2)
+                    for edge in kg_rev[pivot][neighbor]:
+                        for edge2 in kg_rev[pivot][neighbor2]:
+                            if (
+                                self.__relation_similarity(
+                                    kg_rev[pivot][neighbor][edge]["relation_embedding"],
+                                    kg_rev[pivot][neighbor2][edge2][
+                                        "relation_embedding"
+                                    ],
+                                )
+                                > 0.90
+                            ):
+                                yield (neighbor, neighbor2)
 
     def __relation_similarity(self, relation1, relation2):
         """
@@ -134,11 +138,23 @@ class CustomDataset(Dataset):
 def evaluate_model(text_model, text_processor):
     # evaluate the model on a test set
     test_text_data_1 = [
+        "Sam",
+        "Anne",
+        "Uncle Abram",
         "Solomon",
         "Solomon",
-        "Solomon",
+        "A picture of an apple",
+        "A glass of water on the table",
     ]
-    test_text_data_2 = ["Anne", "Alexander", "Abraham"]
+    test_text_data_2 = [
+        "Solomon",
+        "Alonzo",
+        "Alonzo",
+        "Slaves",
+        "Free man",
+        "A picture of an orange",
+        "An airplane in the sky",
+    ]
 
     text_model.eval()
     with torch.no_grad():
@@ -154,7 +170,15 @@ def evaluate_model(text_model, text_processor):
         similarity_scores = nn.CosineSimilarity(dim=1)(
             text_embedding_1, text_embedding_2
         )
-        print(similarity_scores)
+        print(
+            pd.DataFrame.from_dict(
+                {
+                    "text1": test_text_data_1,
+                    "text2": test_text_data_2,
+                    "similarity": similarity_scores.tolist(),
+                }
+            )
+        )
 
 
 class ContrastiveLoss(nn.Module):
@@ -212,7 +236,6 @@ def loss_fn(input1, input2, label):
     :param input2: the second input
     :param label: the label
     """
-    # return 2 - 2 *
     return nn.CosineEmbeddingLoss()(input1, input2, label)
 
 
@@ -235,7 +258,7 @@ print("Pre-training:")
 evaluate_model(text_model, text_processor)
 
 # Fine-tuning parameters
-batch_size = 8
+batch_size = 32
 num_epochs = 10
 learning_rate = 1e-5
 
@@ -255,6 +278,7 @@ data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 # Define the loss function and optimizer
 criterion = ContrastiveLoss(batch_size)
+# criterion = nn.CosineEmbeddingLoss()
 optimizer = optim.AdamW(text_model.parameters(), lr=learning_rate)
 
 # Fine-tuning loop
