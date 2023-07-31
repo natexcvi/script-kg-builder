@@ -38,6 +38,7 @@ class CustomDataset(Dataset):
                 break
         # filter out duplicate pairs, under symmetric relations
         pairs = list(set([tuple(sorted(pair)) for pair in pairs]))
+        pairs.sort()
         print(pairs)
         self.texts1 = [pair[0] for pair in pairs]
         self.texts2 = [pair[1] for pair in pairs]
@@ -124,11 +125,11 @@ class CustomDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.images)
+        return len(self.texts1)
 
     def __getitem__(self, idx):
         return {
-            "pixel_values": self.images[idx],
+            # "pixel_values": self.images[idx],
             "text1": self.texts1[idx],
             "text2": self.texts2[idx],
             "label": self.labels[idx],
@@ -258,8 +259,8 @@ print("Pre-training:")
 evaluate_model(text_model, text_processor)
 
 # Fine-tuning parameters
-batch_size = 32
-num_epochs = 10
+batch_size = 128
+num_epochs = 40
 learning_rate = 1e-5
 
 # Create the dataset and data loader
