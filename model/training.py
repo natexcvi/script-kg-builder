@@ -1,5 +1,5 @@
+import itertools
 import json
-import re
 
 import networkx as nx
 import numpy as np
@@ -11,7 +11,6 @@ from tqdm import tqdm
 from transformers import (
     AutoProcessor,
     AutoTokenizer,
-    CLIPModel,
     CLIPProcessor,
     CLIPTextModelWithProjection,
     CLIPVisionModelWithProjection,
@@ -80,7 +79,7 @@ class CustomDataset(Dataset):
         )
         return graph
 
-    def __build_pairs(self, kg: nx.Graph, num_hops: int = 2):
+    def __build_pairs(self, kg: nx.Graph, num_hops: int = 1):
         """
         Build pairs of entities from the knowledge graph
         based on symmetric relations. For example, (Tom, plays, football)
@@ -92,26 +91,28 @@ class CustomDataset(Dataset):
         :param num_hops: the number of hops to consider for symmetric relations
         :yields: the pairs
         """
-        # reverse the edges in the knowledge graph
-        kg_rev = nx.reverse(kg, copy=True)
 
-        for pivot in kg_rev.nodes:
-            for neighbor in kg_rev.neighbors(pivot):
-                for neighbor2 in kg_rev.neighbors(pivot):
-                    if neighbor2 == pivot or neighbor == neighbor2:
+        for pivot in kg.nodes:
+            # consider only nodes at most num_hops away from the pivot
+            nodes = nx.single_target_shortest_path_length(kg, pivot, cutoff=num_hops)
+            for (u, u_dist), (v, v_dist) in itertools.combinations(nodes, 2):
+                if u_dist == 0 or v_dist == 0 or u == v:
+                    continue
+                u_paths = nx.all_simple_edge_paths(kg, u, pivot, cutoff=num_hops)
+                v_paths = nx.all_simple_edge_paths(kg, v, pivot, cutoff=num_hops)
+                for u_path, v_path in itertools.product(u_paths, v_paths):
+                    if len(u_path) != len(v_path):
                         continue
-                    for edge in kg_rev[pivot][neighbor]:
-                        for edge2 in kg_rev[pivot][neighbor2]:
-                            if (
-                                self.__relation_similarity(
-                                    kg_rev[pivot][neighbor][edge]["relation_embedding"],
-                                    kg_rev[pivot][neighbor2][edge2][
-                                        "relation_embedding"
-                                    ],
-                                )
-                                > 0.90
-                            ):
-                                yield (neighbor, neighbor2)
+                    if all(
+                        self.__relation_similarity(
+                            nx.get_edge_attributes(kg, "relation_embedding")[u_path[i]],
+                            nx.get_edge_attributes(kg, "relation_embedding")[v_path[i]],
+                        )
+                        > 0.90
+                        for i in range(len(u_path))
+                    ):
+                        yield (u, v)
+                        break
 
     def __relation_similarity(self, relation1, relation2):
         """
