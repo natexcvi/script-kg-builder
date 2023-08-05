@@ -220,6 +220,7 @@ class MultiModalKGCLIP(nn.Module):
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
 
+    @staticmethod
     def __get_models():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
