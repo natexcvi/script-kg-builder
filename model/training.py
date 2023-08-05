@@ -11,7 +11,6 @@ from tqdm import tqdm
 from transformers import (
     AutoProcessor,
     AutoTokenizer,
-    CLIPProcessor,
     CLIPTextModelWithProjection,
     CLIPVisionModelWithProjection,
 )
@@ -216,10 +215,30 @@ class MultiModalKGCLIP(nn.Module):
             self.text_processor,
             self.image_model,
             self.image_processor,
-        ) = get_models()
+        ) = self.__get_models()
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.learning_rate = learning_rate
+
+    def __get_models():
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Load the CLIP model and processor
+        text_model = CLIPTextModelWithProjection.from_pretrained(
+            "openai/clip-vit-base-patch32"
+        ).to(device)
+        text_processor = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+
+        image_model = CLIPVisionModelWithProjection.from_pretrained(
+            "openai/clip-vit-base-patch32"
+        )
+        image_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        return (
+            text_model,
+            text_processor,
+            image_model,
+            image_processor,
+        )
 
     def forward(self, text_input, image_input):
         text_embedding = self.text_model(**text_input).text_embeds
@@ -298,29 +317,6 @@ class MultiModalKGCLIP(nn.Module):
                     }
                 )
             )
-
-
-def get_models():
-    clip_model_name = "openai/clip-vit-base-patch16"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Load the CLIP model and processor
-    text_model = CLIPTextModelWithProjection.from_pretrained(
-        "openai/clip-vit-base-patch32"
-    ).to(device)
-    text_processor = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
-
-    image_model = CLIPVisionModelWithProjection.from_pretrained(
-        "openai/clip-vit-base-patch32"
-    )
-    image_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
-    processor = CLIPProcessor.from_pretrained(clip_model_name)
-    return (
-        text_model,
-        text_processor,
-        image_model,
-        image_processor,
-    )
 
 
 model = MultiModalKGCLIP()
