@@ -1,3 +1,4 @@
 **/.DS_Store
 .venv
 fine_tuned_clip_model
+**/*.pyc
