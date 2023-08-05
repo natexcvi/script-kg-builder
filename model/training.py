@@ -17,20 +17,22 @@ from transformers import (
 )
 
 
-class CustomDataset(Dataset):
-    def __init__(self, images, texts1, texts2, labels):
-        self.images = images
-        self.texts1 = texts1
-        self.texts2 = texts2
-        self.labels = labels
-        kg_df = self.__load_knowledge_graph_with_embeddings(
-            "../results/12_years_a_slave.csv"
-        )
-        n = 1000
+class KGDataset(Dataset):
+    def __init__(self, kg_csv_path: str, max_pairs: int = 1000):
+        """
+        Create a dataset of pairs of entities from a knowledge graph.
+
+        Parameters:
+        ----------
+        kg_csv_path : the path to the CSV file containing the knowledge graph
+        max_pairs : the maximum number of pairs to generate
+        """
+
+        kg_df = self.__load_knowledge_graph_with_embeddings(kg_csv_path)
         kg = self.__kg_df_to_graph(kg_df)
         pair_gen = self.__build_pairs(kg)
         pairs = []
-        for _ in tqdm(range(n), total=n):
+        for _ in tqdm(range(max_pairs), total=max_pairs):
             try:
                 pairs.append(next(pair_gen))
             except StopIteration:
@@ -54,21 +56,31 @@ class CustomDataset(Dataset):
     def __load_knowledge_graph_with_embeddings(self, path: str):
         """
         Load th knowledge grpah from a CSV with columns (head, relation, relation_embedding, tail).
-        :param path: the path to the CSV file
-        :return: the knowledge graph
+
+        Parameters:
+        ----------
+        path : the path to the CSV file
+
+        Returns:
+        -------
+        df : the knowledge graph as a pandas dataframe
         """
 
         df = pd.read_csv(path)
-        df["relation_embedding"] = df["relation_embedding"].apply(
-            lambda x: json.loads(x)
-        )
+        df["relation_embedding"] = df["relation_embedding"].apply(json.loads)
         return df
 
     def __kg_df_to_graph(self, kg_df):
         """
         Convert a knowledge graph to a networkx graph.
-        :param kg_df: the knowledge graph
-        :return: the networkx graph
+
+        Parameters:
+        ----------
+        kg_df : the knowledge graph as a pandas dataframe
+
+        Returns:
+        -------
+        graph : the knowledge graph as a networkx graph
         """
         graph = nx.from_pandas_edgelist(
             kg_df,
@@ -87,13 +99,19 @@ class CustomDataset(Dataset):
         In order to account for more fuzzy relation matching, we will use
         the cosine similarity between the relation embeddings to determine
         if two relations are similar enough to be considered symmetric.
-        :param kg: the knowledge graph
-        :param num_hops: the number of hops to consider for symmetric relations
-        :yields: the pairs
+
+        Parameters:
+        ----------
+        kg : the knowledge graph
+        num_hops : the number of hops to consider for symmetric relations
+
+        Yields:
+        ------
+        pairs : the pairs of entities
         """
 
         for pivot in kg.nodes:
-            # consider only nodes at most num_hops away from the pivot
+            # TODO: make this more efficient
             nodes = nx.single_target_shortest_path_length(kg, pivot, cutoff=num_hops)
             for (u, u_dist), (v, v_dist) in itertools.combinations(nodes, 2):
                 if u_dist == 0 or v_dist == 0 or u == v:
@@ -117,9 +135,15 @@ class CustomDataset(Dataset):
     def __relation_similarity(self, relation1, relation2):
         """
         Calculate the cosine similarity between two relation embeddings.
-        :param relation1: the first relation embedding
-        :param relation2: the second relation embedding
-        :return: the cosine similarity
+
+        Parameters:
+        ----------
+        relation1 : the first relation embedding
+        relation2 : the second relation embedding
+
+        Returns:
+        -------
+        similarity : the cosine similarity between the two relation embeddings
         """
         return np.dot(relation1, relation2) / (
             np.linalg.norm(relation1) * np.linalg.norm(relation2)
@@ -130,57 +154,10 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            # "pixel_values": self.images[idx],
             "text1": self.texts1[idx],
             "text2": self.texts2[idx],
             "label": self.labels[idx],
         }
-
-
-def evaluate_model(text_model, text_processor):
-    # evaluate the model on a test set
-    test_text_data_1 = [
-        "Sam",
-        "Anne",
-        "Uncle Abram",
-        "Solomon",
-        "Solomon",
-        "A picture of an apple",
-        "A glass of water on the table",
-    ]
-    test_text_data_2 = [
-        "Solomon",
-        "Alonzo",
-        "Alonzo",
-        "Slaves",
-        "Free man",
-        "A picture of an orange",
-        "An airplane in the sky",
-    ]
-
-    text_model.eval()
-    with torch.no_grad():
-        # calculate the cosine similarity between the two text embeddings
-        text_input_1 = text_processor(
-            test_text_data_1, return_tensors="pt", padding=True
-        )
-        text_input_2 = text_processor(
-            test_text_data_2, return_tensors="pt", padding=True
-        )
-        text_embedding_1 = text_model(**text_input_1).text_embeds
-        text_embedding_2 = text_model(**text_input_2).text_embeds
-        similarity_scores = nn.CosineSimilarity(dim=1)(
-            text_embedding_1, text_embedding_2
-        )
-        print(
-            pd.DataFrame.from_dict(
-                {
-                    "text1": test_text_data_1,
-                    "text2": test_text_data_2,
-                    "similarity": similarity_scores.tolist(),
-                }
-            )
-        )
 
 
 class ContrastiveLoss(nn.Module):
@@ -231,92 +208,145 @@ class ContrastiveLoss(nn.Module):
         return loss
 
 
-def loss_fn(input1, input2, label):
-    """
-    Symmetric contrastive loss function.
-    :param input1: the first input
-    :param input2: the second input
-    :param label: the label
-    """
-    return nn.CosineEmbeddingLoss()(input1, input2, label)
+class MultiModalKGCLIP(nn.Module):
+    def __init__(self, batch_size=128, num_epochs=40, learning_rate=1e-5):
+        super().__init__()
+        (
+            self.text_model,
+            self.text_processor,
+            self.image_model,
+            self.image_processor,
+        ) = get_models()
+        self.batch_size = batch_size
+        self.num_epochs = num_epochs
+        self.learning_rate = learning_rate
+
+    def forward(self, text_input, image_input):
+        text_embedding = self.text_model(**text_input).text_embeds
+        image_embedding = self.image_model(**image_input).image_embeds
+        return text_embedding, image_embedding
+
+    def save_pretrained(self, output_dir):
+        self.text_model.save_pretrained(output_dir)
+        self.image_model.save_pretrained(output_dir)
+
+    @classmethod
+    def from_pretrained(cls, pretrained_dir):
+        text_model = CLIPTextModelWithProjection.from_pretrained(pretrained_dir)
+        image_model = CLIPVisionModelWithProjection.from_pretrained(pretrained_dir)
+        return cls(text_model, image_model)
+
+    def train(self, mode: bool = True):
+        self.text_model.train(mode)
+        self.image_model.train(mode)
+        return super().train(mode)
+
+    def eval(self):
+        self.text_model.eval()
+        self.image_model.eval()
+        return super().eval()
+
+    def fit(self, dataset: DataLoader):
+        criterion = ContrastiveLoss(self.batch_size)
+        optimizer = optim.AdamW(self.text_model.parameters(), lr=self.learning_rate)
+        # Fine-tuning loop
+        self.train()
+        for epoch in range(self.num_epochs):
+            total_loss = 0.0
+            for batch in dataset:
+                optimizer.zero_grad()
+
+                text_input_1 = self.text_processor(
+                    batch["text1"], return_tensors="pt", padding=True
+                )
+                text_input_2 = self.text_processor(
+                    batch["text2"], return_tensors="pt", padding=True
+                )
+                loss = criterion(
+                    self.text_model(**text_input_1).text_embeds,
+                    self.text_model(**text_input_2).text_embeds,
+                )
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+            avg_loss = total_loss / len(dataset)
+            print(f"Epoch {epoch + 1}/{self.num_epochs} - Average Loss: {avg_loss}")
+
+    def evaluate(self, text_data_1, text_data_2):
+        self.eval()
+        with torch.no_grad():
+            # calculate the cosine similarity between the two text embeddings
+            text_input_1 = self.text_processor(
+                text_data_1, return_tensors="pt", padding=True
+            )
+            text_input_2 = self.text_processor(
+                text_data_2, return_tensors="pt", padding=True
+            )
+            text_embedding_1 = self.text_model(**text_input_1).text_embeds
+            text_embedding_2 = self.text_model(**text_input_2).text_embeds
+            similarity_scores = nn.CosineSimilarity(dim=1)(
+                text_embedding_1, text_embedding_2
+            )
+            print(
+                pd.DataFrame.from_dict(
+                    {
+                        "text1": text_data_1,
+                        "text2": text_data_2,
+                        "similarity": similarity_scores.tolist(),
+                    }
+                )
+            )
 
 
-clip_model_name = "openai/clip-vit-base-patch16"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def get_models():
+    clip_model_name = "openai/clip-vit-base-patch16"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load the CLIP model and processor
-text_model = CLIPTextModelWithProjection.from_pretrained(
-    "openai/clip-vit-base-patch32"
-).to(device)
-text_processor = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+    # Load the CLIP model and processor
+    text_model = CLIPTextModelWithProjection.from_pretrained(
+        "openai/clip-vit-base-patch32"
+    ).to(device)
+    text_processor = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
 
-image_model = CLIPVisionModelWithProjection.from_pretrained(
-    "openai/clip-vit-base-patch32"
-)
-image_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained(clip_model_name)
+    image_model = CLIPVisionModelWithProjection.from_pretrained(
+        "openai/clip-vit-base-patch32"
+    )
+    image_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    processor = CLIPProcessor.from_pretrained(clip_model_name)
+    return (
+        text_model,
+        text_processor,
+        image_model,
+        image_processor,
+    )
+
+
+model = MultiModalKGCLIP()
+
+eval_1 = [
+    "Sam",
+    "Anne",
+    "Uncle Abram",
+    "Solomon",
+    "Solomon",
+    "A picture of an apple",
+    "A glass of water on the table",
+]
+eval_2 = [
+    "Solomon",
+    "Alonzo",
+    "Alonzo",
+    "Slaves",
+    "Free man",
+    "A picture of an orange",
+    "An airplane in the sky",
+]
 
 print("Pre-training:")
-evaluate_model(text_model, text_processor)
-
-# Fine-tuning parameters
-batch_size = 128
-num_epochs = 40
-learning_rate = 1e-5
-
-# Create the dataset and data loader
-image_data = np.array([[1, 1, 1], [1, 1, 1]])
-text_data_1 = np.array(["test", "not a test", "test", "not test"])
-text_data_2 = np.array(
-    [
-        "experiment",
-        "the real deal",
-        "the real deal",
-        "experiment",
-    ]
-)
-dataset = CustomDataset(image_data, text_data_1, text_data_2, [1, 1, -1, -1])
-data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-# Define the loss function and optimizer
-criterion = ContrastiveLoss(batch_size)
-# criterion = nn.CosineEmbeddingLoss()
-optimizer = optim.AdamW(text_model.parameters(), lr=learning_rate)
-
-# Fine-tuning loop
-text_model.train()
-for epoch in range(num_epochs):
-    total_loss = 0.0
-    for batch in data_loader:
-        # inputs = processor(
-        #     batch["pixel_values"], batch["text"], return_tensors="pt", padding=True
-        # )
-        # inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        optimizer.zero_grad()
-
-        text_input_1 = text_processor(batch["text1"], return_tensors="pt", padding=True)
-        text_input_2 = text_processor(batch["text2"], return_tensors="pt", padding=True)
-        loss = criterion(
-            text_model(**text_input_1).text_embeds,
-            # image_model(batch["pixel_values"]),
-            text_model(**text_input_2).text_embeds,
-            # batch["label"],
-        )
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-
-    avg_loss = total_loss / len(data_loader)
-    print(f"Epoch {epoch + 1}/{num_epochs} - Average Loss: {avg_loss}")
-
-# Save the fine-tuned model
-output_dir = "./fine_tuned_clip_model"
-text_model.save_pretrained(output_dir)
-image_model.save_pretrained(output_dir)
-
-print("Fine-tuning complete! Model saved at:", output_dir)
-
+model.evaluate(eval_1, eval_2)
+dataset = KGDataset("../results/12_years_a_slave.csv", max_pairs=1000)
+model.fit(DataLoader(dataset, batch_size=128, shuffle=True))
 print("Post-training:")
-evaluate_model(text_model, text_processor)
+model.evaluate(eval_1, eval_2)
