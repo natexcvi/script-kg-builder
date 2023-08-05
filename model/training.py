@@ -162,6 +162,8 @@ class KGDataset(Dataset):
 class ContrastiveLoss(nn.Module):
     """
     Vanilla Contrastive loss, also called InfoNceLoss as in SimCLR paper
+
+    [Source](https://theaisummer.com/simclr/)
     """
 
     def __init__(self, batch_size, temperature=0.5):
@@ -266,14 +268,14 @@ class MultiModalKGCLIP(nn.Module):
         self.image_model.eval()
         return super().eval()
 
-    def fit(self, dataset: DataLoader):
+    def fit(self, data_loader: DataLoader):
         criterion = ContrastiveLoss(self.batch_size)
         optimizer = optim.AdamW(self.text_model.parameters(), lr=self.learning_rate)
         # Fine-tuning loop
         self.train()
         for epoch in range(self.num_epochs):
             total_loss = 0.0
-            for batch in dataset:
+            for batch in data_loader:
                 optimizer.zero_grad()
 
                 text_input_1 = self.text_processor(
@@ -291,7 +293,7 @@ class MultiModalKGCLIP(nn.Module):
 
                 total_loss += loss.item()
 
-            avg_loss = total_loss / len(dataset)
+            avg_loss = total_loss / len(data_loader)
             print(f"Epoch {epoch + 1}/{self.num_epochs} - Average Loss: {avg_loss}")
 
     def evaluate(self, text_data_1, text_data_2):
@@ -320,30 +322,38 @@ class MultiModalKGCLIP(nn.Module):
             )
 
 
-model = MultiModalKGCLIP()
+if __name__ == "__main__":
+    batch_size = 128
 
-eval_1 = [
-    "Sam",
-    "Anne",
-    "Uncle Abram",
-    "Solomon",
-    "Solomon",
-    "A picture of an apple",
-    "A glass of water on the table",
-]
-eval_2 = [
-    "Solomon",
-    "Alonzo",
-    "Alonzo",
-    "Slaves",
-    "Free man",
-    "A picture of an orange",
-    "An airplane in the sky",
-]
+    model = MultiModalKGCLIP(batch_size=batch_size)
 
-print("Pre-training:")
-model.evaluate(eval_1, eval_2)
-dataset = KGDataset("../results/12_years_a_slave.csv", max_pairs=1000)
-model.fit(DataLoader(dataset, batch_size=128, shuffle=True))
-print("Post-training:")
-model.evaluate(eval_1, eval_2)
+    eval_1 = [
+        "Sam",
+        "Solomon",
+        "Anne",
+        "Uncle Abram",
+        "Solomon",
+        "Solomon",
+        "A picture of an apple",
+        "A glass of water on the table",
+    ]
+    eval_2 = [
+        "Solomon",
+        "Anne",
+        "Alonzo",
+        "Alonzo",
+        "Slave",
+        "Free man",
+        "A picture of an orange",
+        "An airplane in the sky",
+    ]
+
+    print("Pre-training:")
+    model.evaluate(eval_1, eval_2)
+    dataset = KGDataset("../results/12_years_a_slave.csv", max_pairs=1000)
+    model.fit(DataLoader(dataset, batch_size=batch_size, shuffle=True))
+    print("Post-training:")
+    model.evaluate(eval_1, eval_2)
+    output_dir = "./fine_tuned_clip_model"
+    model.save_pretrained(output_dir)
+    print(f"Saved model to '{output_dir}'")
