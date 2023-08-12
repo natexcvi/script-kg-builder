@@ -11,9 +11,12 @@ from sklearn.manifold import TSNE
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import (AutoProcessor, AutoTokenizer,
-                          CLIPTextModelWithProjection,
-                          CLIPVisionModelWithProjection)
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPTextModelWithProjection,
+    CLIPVisionModelWithProjection,
+)
 
 
 class KGDataset(Dataset):
@@ -106,7 +109,7 @@ class KGDataset(Dataset):
 
         Yields:
         ------
-        pairs : the pairs of entities
+        pairs : tuples of entities that are symmetrically related
         """
         kg = nx.reverse_view(kg)
         for pivot in kg.nodes:
@@ -227,18 +230,15 @@ class MultiModalKGCLIP(nn.Module):
 
     @staticmethod
     def __get_models():
+        model_name = "openai/clip-vit-large-patch14"
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Load the CLIP model and processor
-        text_model = CLIPTextModelWithProjection.from_pretrained(
-            "openai/clip-vit-base-patch32"
-        ).to(device)
-        text_processor = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+        text_model = CLIPTextModelWithProjection.from_pretrained(model_name).to(device)
+        text_processor = AutoTokenizer.from_pretrained(model_name)
 
-        image_model = CLIPVisionModelWithProjection.from_pretrained(
-            "openai/clip-vit-base-patch32"
-        )
-        image_processor = AutoProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        image_model = CLIPVisionModelWithProjection.from_pretrained(model_name)
+        image_processor = AutoProcessor.from_pretrained(model_name)
         return (
             text_model,
             text_processor,

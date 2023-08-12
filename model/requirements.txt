@@ -3,6 +3,9 @@ transformers
 pillow
 torchvision
 pytest
-matplotlibpandas
+matplotlib
+pandas
 tqdm
 networkx
+plotly
+scikit-learn
