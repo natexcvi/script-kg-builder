@@ -1,10 +1,13 @@
 import itertools
 import json
+from cgitb import text
 
 import networkx as nx
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import torch
+from sklearn.manifold import TSNE
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -296,18 +299,22 @@ class MultiModalKGCLIP(nn.Module):
             avg_loss = total_loss / len(data_loader)
             print(f"Epoch {epoch + 1}/{self.num_epochs} - Average Loss: {avg_loss}")
 
+    def predict(self, text_data):
+        self.eval()
+        with torch.no_grad():
+            # get the image embedding
+            text_input = self.text_processor(
+                text_data, return_tensors="pt", padding=True
+            )
+            text_embedding = self.text_model(**text_input).text_embeds
+            return text_embedding
+
     def evaluate(self, text_data_1, text_data_2):
         self.eval()
         with torch.no_grad():
             # calculate the cosine similarity between the two text embeddings
-            text_input_1 = self.text_processor(
-                text_data_1, return_tensors="pt", padding=True
-            )
-            text_input_2 = self.text_processor(
-                text_data_2, return_tensors="pt", padding=True
-            )
-            text_embedding_1 = self.text_model(**text_input_1).text_embeds
-            text_embedding_2 = self.text_model(**text_input_2).text_embeds
+            text_embedding_1 = self.predict(text_data_1)
+            text_embedding_2 = self.predict(text_data_2)
             similarity_scores = nn.CosineSimilarity(dim=1)(
                 text_embedding_1, text_embedding_2
             )
@@ -322,10 +329,33 @@ class MultiModalKGCLIP(nn.Module):
             )
 
 
+def plot_embeddings(model, text_data):
+    tsne = TSNE(n_components=2, random_state=0, metric="cosine", perplexity=5)
+    visualisation_set = text_data
+    text_embeddings = model.predict(visualisation_set).cpu().numpy()
+    text_embeddings = tsne.fit_transform(text_embeddings)
+    text_embeddings = pd.DataFrame(
+        np.hstack((text_embeddings, np.array(visualisation_set).reshape(-1, 1))),
+        columns=["x", "y", "text"],
+    )
+    text_embeddings["x"] = text_embeddings["x"].astype(float)
+    text_embeddings["y"] = text_embeddings["y"].astype(float)
+    fig = px.scatter(text_embeddings, x="x", y="y", text="text")
+    fig.update_traces(textposition="top center")
+    fig.update_layout(
+        height=800,
+        title_text="Embeddings of several words",
+        title_x=0.5,
+        title_y=0.9,
+        title_font_size=30,
+    )
+    fig.show()
+
+
 if __name__ == "__main__":
     batch_size = 128
 
-    model = MultiModalKGCLIP(batch_size=batch_size, num_epochs=60)
+    model = MultiModalKGCLIP(batch_size=batch_size, num_epochs=40)
 
     eval_1 = [
         "Sam",
@@ -335,6 +365,8 @@ if __name__ == "__main__":
         "Uncle Abram",
         "Solomon",
         "Solomon",
+        "Edwin Epps",
+        "William Ford",
         "A picture of an apple",
         "A glass of water on the table",
     ]
@@ -346,12 +378,15 @@ if __name__ == "__main__":
         "Alonzo",
         "Slaves",
         "Free man",
+        "Solomon",
+        "Solomon",
         "A picture of an orange",
         "An airplane in the sky",
     ]
 
     print("Pre-training:")
     model.evaluate(eval_1, eval_2)
+    plot_embeddings(model, list(set(eval_1 + eval_2)))
     dataset = KGDataset("../results/12_years_a_slave.csv", max_pairs=1000)
     model.fit(DataLoader(dataset, batch_size=batch_size, shuffle=True))
     print("Post-training:")
@@ -359,3 +394,4 @@ if __name__ == "__main__":
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
+    plot_embeddings(model, list(set(eval_1 + eval_2)))
