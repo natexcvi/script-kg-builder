@@ -17,7 +17,7 @@ from transformers import (
 
 
 class KGDataset(Dataset):
-    def __init__(self, kg_csv_path: str, max_pairs: int = 1000):
+    def __init__(self, kg_csv_path: str, max_pairs: int = 1000, max_hops: int = 3):
         """
         Create a dataset of pairs of entities from a knowledge graph.
 
@@ -29,7 +29,7 @@ class KGDataset(Dataset):
 
         kg_df = self.__load_knowledge_graph_with_embeddings(kg_csv_path)
         kg = self.__kg_df_to_graph(kg_df)
-        pair_gen = self.__build_pairs(kg)
+        pair_gen = self.__build_pairs(kg, num_hops=max_hops)
         pairs = []
         for _ in tqdm(range(max_pairs), total=max_pairs):
             try:
@@ -90,7 +90,7 @@ class KGDataset(Dataset):
         )
         return graph
 
-    def __build_pairs(self, kg: nx.Graph, num_hops: int = 1):
+    def __build_pairs(self, kg: nx.Graph, num_hops: int = 3):
         """
         Build pairs of entities from the knowledge graph
         based on symmetric relations. For example, (Tom, plays, football)
@@ -108,28 +108,32 @@ class KGDataset(Dataset):
         ------
         pairs : the pairs of entities
         """
-
+        kg = nx.reverse_view(kg)
         for pivot in kg.nodes:
-            # TODO: make this more efficient
-            nodes = nx.single_target_shortest_path_length(kg, pivot, cutoff=num_hops)
-            for (u, u_dist), (v, v_dist) in itertools.combinations(nodes, 2):
-                if u_dist == 0 or v_dist == 0 or u == v:
-                    continue
-                u_paths = nx.all_simple_edge_paths(kg, u, pivot, cutoff=num_hops)
-                v_paths = nx.all_simple_edge_paths(kg, v, pivot, cutoff=num_hops)
-                for u_path, v_path in itertools.product(u_paths, v_paths):
-                    if len(u_path) != len(v_path):
-                        continue
-                    if all(
-                        self.__relation_similarity(
-                            nx.get_edge_attributes(kg, "relation_embedding")[u_path[i]],
-                            nx.get_edge_attributes(kg, "relation_embedding")[v_path[i]],
-                        )
-                        > 0.90
-                        for i in range(len(u_path))
+            pairs = {0: [(pivot, pivot)]}
+            for k in range(1, num_hops + 1):
+                if k not in pairs:
+                    pairs[k] = []
+                for u, v in pairs[k - 1]:
+                    for ux, uy in itertools.product(
+                        kg.edges(u, data=True), kg.edges(v, data=True)
                     ):
-                        yield (u, v)
-                        break
+                        _, x, ux_data = ux
+                        _, y, vy_data = uy
+                        if x == y:
+                            continue
+                        if (x, y) in pairs[k - 1]:
+                            continue
+                        if (
+                            self.__relation_similarity(
+                                ux_data["relation_embedding"],
+                                vy_data["relation_embedding"],
+                            )
+                            < 0.90
+                        ):
+                            continue
+                        pairs[k].append((x, y))
+                        yield (x, y)
 
     def __relation_similarity(self, relation1, relation2):
         """
@@ -325,11 +329,12 @@ class MultiModalKGCLIP(nn.Module):
 if __name__ == "__main__":
     batch_size = 128
 
-    model = MultiModalKGCLIP(batch_size=batch_size)
+    model = MultiModalKGCLIP(batch_size=batch_size, num_epochs=60)
 
     eval_1 = [
         "Sam",
         "Solomon",
+        "Anne",
         "Anne",
         "Uncle Abram",
         "Solomon",
@@ -341,8 +346,9 @@ if __name__ == "__main__":
         "Solomon",
         "Anne",
         "Alonzo",
+        "Margaret",
         "Alonzo",
-        "Slave",
+        "Slaves",
         "Free man",
         "A picture of an orange",
         "An airplane in the sky",
