@@ -8,12 +8,9 @@ import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import (
-    AutoProcessor,
-    AutoTokenizer,
-    CLIPTextModelWithProjection,
-    CLIPVisionModelWithProjection,
-)
+from transformers import (AutoProcessor, AutoTokenizer,
+                          CLIPTextModelWithProjection,
+                          CLIPVisionModelWithProjection)
 
 
 class KGDataset(Dataset):
@@ -129,11 +126,10 @@ class KGDataset(Dataset):
                                 ux_data["relation_embedding"],
                                 vy_data["relation_embedding"],
                             )
-                            < 0.90
+                            >= 0.90
                         ):
-                            continue
-                        pairs[k].append((x, y))
-                        yield (x, y)
+                            pairs[k].append((x, y))
+                            yield (x, y)
 
     def __relation_similarity(self, relation1, relation2):
         """
