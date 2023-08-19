@@ -1,0 +1,14 @@
+INT  PRISON LIBRARY  DAY  122
+ PRISON LIBRARY  DAY 1954 122
+Andy is sorting books on the cart. He replaces a stack on the
+shelf  and pauses, noticing a line of ants crawling up the
+wood. He glances up. The ants disappear over the top. He pulls
+a chair over and stands on it, peers cautiously over. 
+ANDY 
+Red! 
+Red steps in with an armload of files. Andy gingerly reaches
+in, grabs a black feathered wing, and pulls out a dead crow.
+RED 
+softly 
+Is that Jake? 
+123 
