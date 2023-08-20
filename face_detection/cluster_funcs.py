@@ -87,7 +87,7 @@ def extract_faces(annotation_result,movie_name,path,output):
     os.mkdir(all_dir)
     
     # TODO movie = UPLOAD FROM GOOGLE CLOUD
-    movie = VideoFileClip(str("D:\\OneDrive\\OneDrive - mail.tau.ac.il\\python\\face_detection\\" + movie_name + ".mp4"))
+    movie = VideoFileClip(path)
     i = 0
     
     for annotation in tqdm(annotation_result.face_detection_annotations, desc = "faces extracting"):
