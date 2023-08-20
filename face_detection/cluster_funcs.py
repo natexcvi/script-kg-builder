@@ -20,7 +20,7 @@ from google.cloud import videointelligence_v1 as videointelligence
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "application_default_credentials.json"
 
-IMGS_PER_FACE = 10
+IMGS_PER_FACE = 5
 
 ''' Common utilities '''
 '''
@@ -68,7 +68,7 @@ def detect_faces(path):
     )
 
     print("\nProcessing video for face detection annotations.")
-    result = operation.result(timeout=10000)
+    result = operation.result(timeout=1000000)
 
     print("\nFinished processing.\n")
 
