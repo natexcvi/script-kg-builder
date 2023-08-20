@@ -41,11 +41,17 @@ class ResizeUtils:
         return cv2.resize(image, (target_width, h), interpolation=method)
 '''
 
-def detect_faces(gcs_uri):
+def detect_faces(path):
     """Detects faces in a video."""
     
     client = videointelligence.VideoIntelligenceServiceClient()
 
+    if not path.startswith("gs"):
+        with io.open(path, "rb") as f:
+            input_content = f.read()
+    else:
+        input_content = path
+    
     # Configure the request
     config = videointelligence.FaceDetectionConfig(
         include_bounding_boxes=True, include_attributes=False
@@ -56,7 +62,7 @@ def detect_faces(gcs_uri):
     operation = client.annotate_video(
         request={
             "features": [videointelligence.Feature.FACE_DETECTION],
-            "input_uri": gcs_uri,
+            "input_uri": input_content,
             "video_context": context,
         }
     )
@@ -69,7 +75,7 @@ def detect_faces(gcs_uri):
     # Retrieve the first result, because a single video was processed.
     return result.annotation_results[0]
 
-def extract_faces(annotation_result,movie_name,gcs_uri,output):
+def extract_faces(annotation_result,movie_name,path,output):
     """ Extract faces pictures to a folder """
     if os.path.exists(output):
         shutil.rmtree(output)
