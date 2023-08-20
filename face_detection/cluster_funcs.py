@@ -188,7 +188,7 @@ def cluster(embeddings):
     """
     
     # cluster the embeddings
-    clt = DBSCAN(eps=0.8, metric="euclidean", min_samples=IMGS_PER_FACE)
+    clt = DBSCAN(eps=0.8, metric="euclidean", min_samples=IMGS_PER_FACE+1)
     clt.fit(embeddings)
 
     # determine the total number of unique faces found in the dataset

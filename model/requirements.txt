@@ -9,3 +9,8 @@ tqdm
 networkx
 plotly
 scikit-learn
+numpy
+facenet_pytorch
+imutils
+moviepy
+mediapipe
