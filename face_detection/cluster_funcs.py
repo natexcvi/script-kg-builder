@@ -18,7 +18,7 @@ from mediapipe.tasks.python import vision
 
 from google.cloud import videointelligence_v1 as videointelligence
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "C:\\Users\\USER\\AppData\\Roaming\\gcloud\\application_default_credentials.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "application_default_credentials.json"
 
 IMGS_PER_FACE = 10
 
