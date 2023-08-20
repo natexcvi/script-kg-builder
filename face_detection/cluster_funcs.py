@@ -62,7 +62,7 @@ def detect_faces(path):
     operation = client.annotate_video(
         request={
             "features": [videointelligence.Feature.FACE_DETECTION],
-            "input_uri": input_content,
+            "input_content": input_content,
             "video_context": context,
         }
     )
