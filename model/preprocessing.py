@@ -1,4 +1,5 @@
 import os
+import string
 
 import torch
 import torchvision.transforms as transforms
@@ -17,7 +18,6 @@ preprocess = transforms.Compose(
     [
         transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=normalize_mean, std=normalize_std),
     ]
 )
 
@@ -25,8 +25,8 @@ preprocess = transforms.Compose(
 def process_image(image_path):
     try:
         img = Image.open(image_path)
-        img_tensor = preprocess(img).unsqueeze(0)  # Add batch dimension
-        return img_tensor
+        img = preprocess(img)
+        return img
     except Exception as e:
         print(f"Error processing image '{image_path}': {e}")
         return None
@@ -38,3 +38,13 @@ def save_tensor_to_file(tensor, output_file):
         print(f"Image tensor saved to '{output_file}'")
     except Exception as e:
         print(f"Error saving image tensor to '{output_file}': {e}")
+
+
+def text_preprocessor(text):
+    # to lowercase
+    text = text.lower()
+    # remove punctuation
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    # remove whitespace
+    text = text.strip()
+    return text

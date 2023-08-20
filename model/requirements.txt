@@ -9,3 +9,5 @@ tqdm
 networkx
 plotly
 scikit-learn
+hmni
+thefuzz

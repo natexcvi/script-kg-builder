@@ -1,6 +1,8 @@
 import itertools
 import json
-from cgitb import text
+import os
+from calendar import c
+from typing import Optional, Sized
 
 import networkx as nx
 import numpy as np
@@ -8,8 +10,10 @@ import pandas as pd
 import plotly.express as px
 import torch
 from sklearn.manifold import TSNE
+from thefuzz import fuzz
+from thefuzz import process as fuzz_process
 from torch import nn, optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler
 from tqdm import tqdm
 from transformers import (
     AutoProcessor,
@@ -18,42 +22,198 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
+from preprocessing import process_image
+
+
+class KGDatasetBatchSampler(Sampler):
+    def __init__(self, data_source: "KGDataset", batch_size: int) -> None:
+        super().__init__(data_source)
+        self.data_source = data_source
+        self.batch_size = batch_size
+        text_text = torch.randperm(len(self.data_source.text_text_pairs)).tolist()
+        text_image = (
+            torch.randperm(len(self.data_source.text_image_pairs))
+            + len(self.data_source.text_text_pairs)
+        ).tolist()
+        image_text = (
+            torch.randperm(len(self.data_source.image_text_pairs))
+            + len(self.data_source.text_text_pairs)
+            + len(self.data_source.text_image_pairs)
+        ).tolist()
+        image_image = (
+            torch.randperm(len(self.data_source.image_image_pairs))
+            + len(self.data_source.text_text_pairs)
+            + len(self.data_source.text_image_pairs)
+            + len(self.data_source.image_text_pairs)
+        ).tolist()
+        batches = (
+            self.__to_chuncks(text_text)
+            + self.__to_chuncks(text_image)
+            + self.__to_chuncks(image_text)
+            + self.__to_chuncks(image_image)
+        )
+        np.random.shuffle(batches)
+        self.batches = batches
+
+    def __iter__(self):
+        for batch in self.batches:
+            yield batch
+
+    def __to_chuncks(self, lst):
+        chuncks = []
+        for i in range(0, len(lst), self.batch_size):
+            chuncks.append(lst[i : i + self.batch_size])
+        return chuncks
+
+    def __len__(self):
+        return len(self.batches)
+
 
 class KGDataset(Dataset):
-    def __init__(self, kg_csv_path: str, max_pairs: int = 1000, max_hops: int = 3):
+    def __init__(
+        self,
+        kg_csv_path: str,
+        face_images_dir: Optional[str] = None,
+        max_pairs: int = 1000,
+        max_hops: int = 3,
+    ):
         """
         Create a dataset of pairs of entities from a knowledge graph.
 
         Parameters:
         ----------
         kg_csv_path : the path to the CSV file containing the knowledge graph
+        face_images_dir : the path to the directory containing the face images of film characters
         max_pairs : the maximum number of pairs to generate
+        max_hops : the maximum number of hops to consider for symmetric relations
         """
 
         kg_df = self.__load_knowledge_graph_with_embeddings(kg_csv_path)
         kg = self.__kg_df_to_graph(kg_df)
         pair_gen = self.__build_pairs(kg, num_hops=max_hops)
-        pairs = []
+        textual_pairs = []
         for _ in tqdm(range(max_pairs), total=max_pairs):
             try:
-                pairs.append(next(pair_gen))
+                textual_pairs.append(next(pair_gen))
             except StopIteration:
                 break
-        # filter out duplicate pairs, under symmetric relations
-        pairs = list(set([tuple(sorted(pair)) for pair in pairs]))
-        pairs.sort()
-        print(pairs)
-        self.texts1 = [pair[0] for pair in pairs]
-        self.texts2 = [pair[1] for pair in pairs]
-        self.labels = [1] * len(pairs)
 
-        # sanity check
-        # self.texts1 = ["Anne"]
-        # self.texts2 = ["Solomon"]
-        # self.labels = [1]
-        # self.texts1.append("Solomon")
-        # self.texts2.append("Alexander")
-        # self.labels.append(-1)
+        # filter out duplicate pairs, under symmetric relations
+        textual_pairs = list({tuple(sorted(pair)) for pair in textual_pairs})
+        textual_pairs.sort()
+        print(textual_pairs)
+
+        self.face_images = (
+            self.__load_face_images(face_images_dir)
+            if face_images_dir is not None
+            else {}
+        )
+        unique_entity_names = {
+            entity
+            for entity in [pair[0] for pair in textual_pairs]
+            + [pair[1] for pair in textual_pairs]
+        }
+        matched_face_images = self.__match_face_images(list(unique_entity_names))
+        self.__build_multimodal_pairs(textual_pairs, matched_face_images)
+
+    def __build_multimodal_pairs(
+        self, pairs: list[tuple[str, str]], matched_face_images: dict[str, list]
+    ):
+        """
+        Build pairs of entities from the knowledge graph
+        and their corresponding face images.
+
+        Parameters:
+        ----------
+        pairs : the pairs of entities
+        matched_face_images : the face images of the entities
+        """
+
+        self.texts1 = []
+        self.texts2 = []
+        self.images1 = []
+        self.images2 = []
+        for head, tail in pairs:
+            self.texts1.append(head)
+            self.texts2.append(tail)
+            head_image, tail_image = (
+                matched_face_images.get(head, [None])[0],
+                matched_face_images.get(tail, [None])[0],
+            )
+            self.images1.append(head_image)
+            self.images2.append(tail_image)
+
+        self.text_text_pairs = list(zip(self.texts1, self.texts2))
+        self.text_image_pairs = [
+            (text, image)
+            for text, image in zip(self.texts1, self.images2)
+            if image is not None
+        ]
+        self.image_text_pairs = [
+            (image, text)
+            for image, text in zip(self.images1, self.texts2)
+            if image is not None
+        ]
+        self.image_image_pairs = [
+            pair for pair in zip(self.images1, self.images2) if None not in pair
+        ]
+        self.labels = [1] * (
+            len(self.text_text_pairs)
+            + len(self.text_image_pairs)
+            + len(self.image_text_pairs)
+            + len(self.image_image_pairs)
+        )
+
+    def __match_face_images(self, names: list[str]) -> dict[str, list]:
+        """
+        Match the face images to the names of the characters
+        using fuzzy string matching.
+        If a name is not matched, then the name will not be included
+        in the returned dictionary.
+
+        Parameters:
+        ----------
+        names : the names of the characters
+
+        Returns:
+        -------
+        images : a dictionary mapping the name of the character to a list of face images
+        """
+        canonical_names = list(self.face_images.keys())
+        images = {}
+        for name in names:
+            match = fuzz_process.extractOne(name, canonical_names, score_cutoff=90)
+            if match is not None:
+                match, _ = match
+                images[name] = self.face_images[match]
+        return images
+
+    def __load_face_images(self, path: str):
+        """
+        Load the face images from a directory.
+
+        Parameters:
+        ----------
+        path : the path to the directory containing the face images, where
+                the name of each subdirectory is the name of the character.
+
+        Returns:
+        -------
+        images : a dictionary mapping the name of the character to a list of face images
+        """
+
+        images: dict[str, list] = {}
+        for sub_dir in os.listdir(path):
+            if not os.path.isdir(os.path.join(path, sub_dir)):
+                continue
+            for image_path in os.listdir(os.path.join(path, sub_dir)):
+                image = process_image(os.path.join(path, image_path))
+                if image is not None:
+                    name = sub_dir
+                    if name not in images:
+                        images[name] = []
+                    images[name].append(image)
+        return images
 
     def __load_knowledge_graph_with_embeddings(self, path: str):
         """
@@ -155,12 +315,46 @@ class KGDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.texts1)
+        return (
+            len(self.text_text_pairs)
+            + len(self.text_image_pairs)
+            + len(self.image_text_pairs)
+            + len(self.image_image_pairs)
+        )
 
     def __getitem__(self, idx):
+        if idx < len(self.text_text_pairs):
+            return {
+                "text1": self.text_text_pairs[idx][0],
+                "text2": self.text_text_pairs[idx][1],
+                "label": self.labels[idx],
+            }
+        if idx < len(self.text_text_pairs) + len(self.text_image_pairs):
+            idx = idx - len(self.text_text_pairs)
+            return {
+                "text1": self.text_image_pairs[idx][0],
+                "image2": self.text_image_pairs[idx][1],
+                "label": self.labels[idx],
+            }
+        if idx < (
+            len(self.text_text_pairs)
+            + len(self.text_image_pairs)
+            + len(self.image_text_pairs)
+        ):
+            idx = idx - (len(self.text_text_pairs) + len(self.text_image_pairs))
+            return {
+                "image1": self.image_text_pairs[idx][0],
+                "text2": self.image_text_pairs[idx][1],
+                "label": self.labels[idx],
+            }
+        idx = idx - (
+            len(self.text_text_pairs)
+            + len(self.text_image_pairs)
+            + len(self.image_text_pairs)
+        )
         return {
-            "text1": self.texts1[idx],
-            "text2": self.texts2[idx],
+            "image1": self.image_image_pairs[idx][0],
+            "image2": self.image_image_pairs[idx][1],
             "label": self.labels[idx],
         }
 
@@ -238,7 +432,7 @@ class MultiModalKGCLIP(nn.Module):
         text_processor = AutoTokenizer.from_pretrained(model_name)
 
         image_model = CLIPVisionModelWithProjection.from_pretrained(model_name)
-        image_processor = AutoProcessor.from_pretrained(model_name)
+        image_processor = AutoProcessor.from_pretrained(model_name).image_processor
         return (
             text_model,
             text_processor,
@@ -271,68 +465,186 @@ class MultiModalKGCLIP(nn.Module):
         self.image_model.eval()
         return super().eval()
 
+    def __get_batch_type(self, batch):
+        if "text1" in batch and "text2" in batch:
+            return "text_text"
+        elif "text1" in batch and "image2" in batch:
+            return "text_image"
+        elif "image1" in batch and "text2" in batch:
+            return "image_text"
+        elif "image1" in batch and "image2" in batch:
+            return "image_image"
+
     def fit(self, data_loader: DataLoader):
         criterion = ContrastiveLoss(self.batch_size)
-        optimizer = optim.AdamW(self.text_model.parameters(), lr=self.learning_rate)
+        text_optimizer = optim.AdamW(
+            self.text_model.parameters(), lr=self.learning_rate
+        )
+        image_optimizer = optim.AdamW(
+            self.image_model.parameters(), lr=self.learning_rate
+        )
         # Fine-tuning loop
         self.train()
         for epoch in range(self.num_epochs):
             total_loss = 0.0
             for batch in data_loader:
-                optimizer.zero_grad()
+                batch_type = self.__get_batch_type(batch)
+                if batch_type == "text_text":
+                    text_optimizer.zero_grad()
 
-                text_input_1 = self.text_processor(
-                    batch["text1"], return_tensors="pt", padding=True
-                )
-                text_input_2 = self.text_processor(
-                    batch["text2"], return_tensors="pt", padding=True
-                )
-                loss = criterion(
-                    self.text_model(**text_input_1).text_embeds,
-                    self.text_model(**text_input_2).text_embeds,
-                )
-                loss.backward()
-                optimizer.step()
+                    text_input_1 = self.text_processor(
+                        batch["text1"], return_tensors="pt", padding=True
+                    )
+                    text_input_2 = self.text_processor(
+                        batch["text2"], return_tensors="pt", padding=True
+                    )
+                    loss = criterion(
+                        self.text_model(**text_input_1).text_embeds,
+                        self.text_model(**text_input_2).text_embeds,
+                    )
+                    loss.backward()
+                    text_optimizer.step()
+                elif batch_type == "text_image":
+                    text_optimizer.zero_grad()
+                    image_optimizer.zero_grad()
+
+                    text_input = self.text_processor(
+                        batch["text1"], return_tensors="pt", padding=True
+                    )
+                    image_input = self.image_processor(
+                        batch["image2"], return_tensors="pt", padding=True
+                    )
+                    loss = criterion(
+                        self.text_model(**text_input).text_embeds,
+                        self.image_model(**image_input).image_embeds,
+                    )
+                    loss.backward()
+                    text_optimizer.step()
+                    image_optimizer.step()
+                elif batch_type == "image_text":
+                    text_optimizer.zero_grad()
+                    image_optimizer.zero_grad()
+
+                    image_input = self.image_processor(
+                        batch["image1"], return_tensors="pt", padding=True
+                    )
+                    text_input = self.text_processor(
+                        batch["text2"], return_tensors="pt", padding=True
+                    )
+                    loss = criterion(
+                        self.image_model(**image_input).image_embeds,
+                        self.text_model(**text_input).text_embeds,
+                    )
+                    loss.backward()
+                    text_optimizer.step()
+                    image_optimizer.step()
+                elif batch_type == "image_image":
+                    image_optimizer.zero_grad()
+
+                    image_input_1 = self.image_processor(
+                        batch["image1"], return_tensors="pt", padding=True
+                    )
+                    image_input_2 = self.image_processor(
+                        batch["image2"], return_tensors="pt", padding=True
+                    )
+                    loss = criterion(
+                        self.image_model(**image_input_1).image_embeds,
+                        self.image_model(**image_input_2).image_embeds,
+                    )
+                    loss.backward()
+                    image_optimizer.step()
 
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(data_loader)
             print(f"Epoch {epoch + 1}/{self.num_epochs} - Average Loss: {avg_loss}")
 
-    def predict(self, text_data):
+    def predict_text(self, text_data):
         self.eval()
         with torch.no_grad():
-            # get the image embedding
+            # get the text embedding
             text_input = self.text_processor(
                 text_data, return_tensors="pt", padding=True
             )
             text_embedding = self.text_model(**text_input).text_embeds
             return text_embedding
 
-    def evaluate(self, text_data_1, text_data_2):
+    def predict_image(self, image_data):
         self.eval()
         with torch.no_grad():
-            # calculate the cosine similarity between the two text embeddings
-            text_embedding_1 = self.predict(text_data_1)
-            text_embedding_2 = self.predict(text_data_2)
-            similarity_scores = nn.CosineSimilarity(dim=1)(
-                text_embedding_1, text_embedding_2
+            # get the image embedding
+            image_input = self.image_processor(
+                image_data, return_tensors="pt", padding=True
             )
+            image_embedding = self.image_model(**image_input).image_embeds
+            return image_embedding
+
+    def evaluate(
+        self, text_data_1=None, text_data_2=None, image_data_1=None, image_data_2=None
+    ):
+        if (
+            sum(
+                [
+                    1 if text_data_1 is not None else 0,
+                    1 if text_data_2 is not None else 0,
+                    1 if image_data_1 is not None else 0,
+                    1 if image_data_2 is not None else 0,
+                ]
+            )
+            != 2
+        ):
+            raise ValueError(
+                "Exactly two of text_data_1, text_data_2, image_data_1, image_data_2 must be provided"
+            )
+        if text_data_1 is not None and text_data_2 is not None:
+            data_1 = text_data_1
+            data_2 = text_data_2
+            kind_1 = "text1"
+            kind_2 = "text2"
+            predict1 = self.predict_text
+            predict2 = self.predict_text
+        elif text_data_1 is not None and image_data_2 is not None:
+            data_1 = text_data_1
+            data_2 = image_data_2
+            kind_1 = "text1"
+            kind_2 = "image2"
+            predict1 = self.predict_text
+            predict2 = self.predict_image
+        elif image_data_1 is not None and text_data_2 is not None:
+            data_1 = image_data_1
+            data_2 = text_data_2
+            kind_1 = "image1"
+            kind_2 = "text2"
+            predict1 = self.predict_image
+            predict2 = self.predict_text
+        elif image_data_1 is not None and image_data_2 is not None:
+            data_1 = image_data_1
+            data_2 = image_data_2
+            kind_1 = "image1"
+            kind_2 = "image2"
+            predict1 = self.predict_image
+            predict2 = self.predict_image
+        self.eval()
+        with torch.no_grad():
+            # calculate the cosine similarity between the two embeddings
+            embedding_1 = predict1(data_1)
+            embedding_2 = predict2(data_2)
+            similarity_scores = nn.CosineSimilarity(dim=1)(embedding_1, embedding_2)
             print(
                 pd.DataFrame.from_dict(
                     {
-                        "text1": text_data_1,
-                        "text2": text_data_2,
+                        kind_1: data_1,
+                        kind_2: data_2,
                         "similarity": similarity_scores.tolist(),
                     }
                 )
             )
 
 
-def plot_embeddings(model, text_data):
+def plot_text_embeddings(model, text_data):
     tsne = TSNE(n_components=2, random_state=0, metric="cosine", perplexity=5)
     visualisation_set = text_data
-    text_embeddings = model.predict(visualisation_set).cpu().numpy()
+    text_embeddings = model.predict_text(visualisation_set).cpu().numpy()
     text_embeddings = tsne.fit_transform(text_embeddings)
     text_embeddings = pd.DataFrame(
         np.hstack((text_embeddings, np.array(visualisation_set).reshape(-1, 1))),
@@ -386,12 +698,19 @@ if __name__ == "__main__":
 
     print("Pre-training:")
     model.evaluate(eval_1, eval_2)
-    plot_embeddings(model, list(set(eval_1 + eval_2)))
-    dataset = KGDataset("../results/12_years_a_slave.csv", max_pairs=1000)
-    model.fit(DataLoader(dataset, batch_size=batch_size, shuffle=True))
+    plot_text_embeddings(model, list(set(eval_1 + eval_2)))
+    dataset = KGDataset(
+        "../results/12_years_a_slave.csv", "/Users/nate/Downloads/Faces", max_pairs=1000
+    )
+    model.fit(
+        DataLoader(
+            dataset,
+            batch_sampler=KGDatasetBatchSampler(dataset, batch_size),
+        )
+    )
     print("Post-training:")
     model.evaluate(eval_1, eval_2)
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
-    plot_embeddings(model, list(set(eval_1 + eval_2)))
+    plot_text_embeddings(model, list(set(eval_1 + eval_2)))
