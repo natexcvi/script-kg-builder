@@ -15,12 +15,9 @@ from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (
-    AutoProcessor,
-    AutoTokenizer,
-    CLIPTextModelWithProjection,
-    CLIPVisionModelWithProjection,
-)
+from transformers import (AutoProcessor, AutoTokenizer,
+                          CLIPTextModelWithProjection,
+                          CLIPVisionModelWithProjection)
 
 from preprocessing import process_image
 
@@ -448,13 +445,13 @@ class MultiModalKGCLIP(nn.Module):
         return text_embedding, image_embedding
 
     def save_pretrained(self, output_dir):
-        self.text_model.save_pretrained(output_dir)
-        self.image_model.save_pretrained(output_dir)
+        self.text_model.save_pretrained(os.path.join(output_dir, "text_model"))
+        self.image_model.save_pretrained(os.path.join(output_dir, "image_model"))
 
     @classmethod
     def from_pretrained(cls, pretrained_dir):
-        text_model = CLIPTextModelWithProjection.from_pretrained(pretrained_dir)
-        image_model = CLIPVisionModelWithProjection.from_pretrained(pretrained_dir)
+        text_model = CLIPTextModelWithProjection.from_pretrained(os.path.join(pretrained_dir, "text_model"))
+        image_model = CLIPVisionModelWithProjection.from_pretrained(os.path.join(pretrained_dir, "image_model"))
         return cls(text_model, image_model)
 
     def train(self, mode: bool = True):
@@ -722,7 +719,7 @@ def plot_image_embeddings(
 if __name__ == "__main__":
     batch_size = 128
 
-    model = MultiModalKGCLIP(batch_size=batch_size, num_epochs=40)
+    model = MultiModalKGCLIP.from_pretrained("/Users/nate/Downloads/results/fine_tuned_clip_model")
 
     eval_1 = [
         "Sam",
@@ -734,6 +731,7 @@ if __name__ == "__main__":
         "Solomon",
         "Edwin Epps",
         "William Ford",
+        "Merrill Brown",
         "A picture of an apple",
         "A glass of water on the table",
     ]
@@ -747,6 +745,7 @@ if __name__ == "__main__":
         "Free man",
         "Solomon",
         "Solomon",
+        "Abram Hamilton",
         "A picture of an orange",
         "An airplane in the sky",
     ]
