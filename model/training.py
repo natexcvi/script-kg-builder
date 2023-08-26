@@ -15,9 +15,12 @@ from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (AutoProcessor, AutoTokenizer,
-                          CLIPTextModelWithProjection,
-                          CLIPVisionModelWithProjection)
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPTextModelWithProjection,
+    CLIPVisionModelWithProjection,
+)
 
 from preprocessing import process_image
 
@@ -450,8 +453,12 @@ class MultiModalKGCLIP(nn.Module):
 
     @classmethod
     def from_pretrained(cls, pretrained_dir):
-        text_model = CLIPTextModelWithProjection.from_pretrained(os.path.join(pretrained_dir, "text_model"))
-        image_model = CLIPVisionModelWithProjection.from_pretrained(os.path.join(pretrained_dir, "image_model"))
+        text_model = CLIPTextModelWithProjection.from_pretrained(
+            os.path.join(pretrained_dir, "text_model")
+        )
+        image_model = CLIPVisionModelWithProjection.from_pretrained(
+            os.path.join(pretrained_dir, "image_model")
+        )
         return cls(text_model, image_model)
 
     def train(self, mode: bool = True):
