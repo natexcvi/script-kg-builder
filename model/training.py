@@ -719,7 +719,7 @@ def plot_image_embeddings(
 if __name__ == "__main__":
     batch_size = 128
 
-    model = MultiModalKGCLIP.from_pretrained("/Users/nate/Downloads/results/fine_tuned_clip_model")
+    model = MultiModalKGCLIP(batch_size=batch_size, num_epochs=40)
 
     eval_1 = [
         "Sam",
