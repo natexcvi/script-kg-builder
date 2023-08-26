@@ -784,6 +784,7 @@ if __name__ == "__main__":
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
+    torch.save(model, os.path.join(output_dir, "model.pt"))
     plot_text_embeddings(
         model, list(set(eval_1 + eval_2)), save_to="post_embeddings_text.svg"
     )
