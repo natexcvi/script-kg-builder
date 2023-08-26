@@ -1,8 +1,7 @@
 import itertools
 import json
 import os
-from calendar import c
-from typing import Optional, Sized
+from typing import Optional
 
 import networkx as nx
 import numpy as np
@@ -10,10 +9,9 @@ import pandas as pd
 import plotly.express as px
 import torch
 from sklearn.manifold import TSNE
-from thefuzz import fuzz
 from thefuzz import process as fuzz_process
 from torch import nn, optim
-from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler
+from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
 from transformers import (
     AutoProcessor,
