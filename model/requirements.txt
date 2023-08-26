@@ -11,3 +11,4 @@ plotly
 scikit-learn
 hmni
 thefuzz
+psutil

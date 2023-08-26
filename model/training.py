@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import torch
-from preprocessing import process_image
 from sklearn.manifold import TSNE
 from thefuzz import fuzz
 from thefuzz import process as fuzz_process
@@ -22,6 +21,8 @@ from transformers import (
     CLIPTextModelWithProjection,
     CLIPVisionModelWithProjection,
 )
+
+from preprocessing import process_image
 
 
 class KGDatasetBatchSampler(Sampler):
@@ -112,7 +113,7 @@ class KGDataset(Dataset):
             for entity in [pair[0] for pair in textual_pairs]
             + [pair[1] for pair in textual_pairs]
         }
-        matched_face_images = self.__match_face_images(list(unique_entity_names))
+        matched_face_images = self.match_face_images(list(unique_entity_names))
         self.__build_multimodal_pairs(textual_pairs, matched_face_images)
 
     def __build_multimodal_pairs(
@@ -163,7 +164,7 @@ class KGDataset(Dataset):
             + len(self.image_image_pairs)
         )
 
-    def __match_face_images(self, names: list[str]) -> dict[str, list]:
+    def match_face_images(self, names: list[str]) -> dict[str, list]:
         """
         Match the face images to the names of the characters
         using fuzzy string matching.
@@ -206,7 +207,7 @@ class KGDataset(Dataset):
             if not os.path.isdir(os.path.join(path, sub_dir)):
                 continue
             for image_path in os.listdir(os.path.join(path, sub_dir)):
-                image = process_image(os.path.join(path, image_path))
+                image = process_image(os.path.join(path, sub_dir, image_path))
                 if image is not None:
                     name = sub_dir
                     if name not in images:
@@ -430,7 +431,7 @@ class MultiModalKGCLIP(nn.Module):
         text_model = CLIPTextModelWithProjection.from_pretrained(model_name).to(device)
         text_processor = AutoTokenizer.from_pretrained(model_name)
 
-        image_model = CLIPVisionModelWithProjection.from_pretrained(model_name)
+        image_model = CLIPVisionModelWithProjection.from_pretrained(model_name).to(device)
         image_processor = AutoProcessor.from_pretrained(model_name).image_processor
         return (
             text_model,
@@ -656,7 +657,39 @@ def plot_text_embeddings(model, text_data, save_to: Optional[str] = None):
     fig.update_traces(textposition="top center")
     fig.update_layout(
         height=800,
-        title_text="Embeddings of several words",
+        title_x=0.5,
+        title_y=0.9,
+        title_font_size=30,
+    )
+    if save_to is not None:
+        fig.write_image(save_to)
+    fig.show()
+
+
+def plot_image_embeddings(
+    model, image_data: list[tuple[str, np.ndarray]], save_to: Optional[str] = None
+):
+    tsne = TSNE(
+        n_components=2,
+        random_state=0,
+        metric="cosine",
+        perplexity=min(5, len(image_data) - 1),
+    )
+    names, visualisation_set = list(zip(*image_data))
+    names = list(names)
+    visualisation_set = list(visualisation_set)
+    image_embeddings = model.predict_image(visualisation_set).cpu().numpy()
+    image_embeddings = tsne.fit_transform(image_embeddings)
+    image_embeddings = pd.DataFrame(
+        np.hstack((image_embeddings, np.array(names).reshape(-1, 1))),
+        columns=["x", "y", "image"],
+    )
+    image_embeddings["x"] = image_embeddings["x"].astype(float)
+    image_embeddings["y"] = image_embeddings["y"].astype(float)
+    fig = px.scatter(image_embeddings, x="x", y="y", text="image")
+    fig.update_traces(textposition="top center")
+    fig.update_layout(
+        height=800,
         title_x=0.5,
         title_y=0.9,
         title_font_size=30,
@@ -698,13 +731,28 @@ if __name__ == "__main__":
         "An airplane in the sky",
     ]
 
+    dataset = KGDataset(
+        "../results/12_years_a_slave.csv",
+        "/Users/nate/Downloads/Faces-2/faces",
+        max_pairs=1000,
+    )
+
+    image_eval_1 = [
+        (name, images[0]) for name, images in dataset.match_face_images(eval_1).items()
+    ]
+    image_eval_2 = [
+        (name, images[0]) for name, images in dataset.match_face_images(eval_2).items()
+    ]
+
     print("Pre-training:")
     model.evaluate(eval_1, eval_2)
     plot_text_embeddings(
-        model, list(set(eval_1 + eval_2)), save_to="pre_embeddings.svg"
+        model, list(set(eval_1 + eval_2)), save_to="pre_embeddings_text.svg"
     )
-    dataset = KGDataset(
-        "../results/12_years_a_slave.csv", "/Users/nate/Downloads/Faces", max_pairs=1000
+    plot_image_embeddings(
+        model,
+        list(set(image_eval_1 + image_eval_2)),
+        save_to="pre_embeddings_image.svg",
     )
     model.fit(
         DataLoader(
@@ -718,5 +766,10 @@ if __name__ == "__main__":
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
     plot_text_embeddings(
-        model, list(set(eval_1 + eval_2)), save_to="post_embeddings.svg"
+        model, list(set(eval_1 + eval_2)), save_to="post_embeddings_text.svg"
+    )
+    plot_image_embeddings(
+        model,
+        list(set(image_eval_1 + image_eval_2)),
+        save_to="post_embeddings_image.svg",
     )
