@@ -431,7 +431,9 @@ class MultiModalKGCLIP(nn.Module):
         text_model = CLIPTextModelWithProjection.from_pretrained(model_name).to(device)
         text_processor = AutoTokenizer.from_pretrained(model_name)
 
-        image_model = CLIPVisionModelWithProjection.from_pretrained(model_name).to(device)
+        image_model = CLIPVisionModelWithProjection.from_pretrained(model_name).to(
+            device
+        )
         image_processor = AutoProcessor.from_pretrained(model_name).image_processor
         return (
             text_model,
@@ -499,6 +501,10 @@ class MultiModalKGCLIP(nn.Module):
                     text_input_2 = self.text_processor(
                         batch["text2"], return_tensors="pt", padding=True
                     )
+                    text_input_1, text_input_2 = (
+                        text_input_1.to(self.text_model.device),
+                        text_input_2.to(self.text_model.device),
+                    )
                     loss = criterion(
                         self.text_model(**text_input_1).text_embeds,
                         self.text_model(**text_input_2).text_embeds,
@@ -514,6 +520,10 @@ class MultiModalKGCLIP(nn.Module):
                     )
                     image_input = self.image_processor(
                         batch["image2"], return_tensors="pt", padding=True
+                    )
+                    text_input, image_input = (
+                        text_input.to(self.text_model.device),
+                        image_input.to(self.image_model.device),
                     )
                     loss = criterion(
                         self.text_model(**text_input).text_embeds,
@@ -532,6 +542,10 @@ class MultiModalKGCLIP(nn.Module):
                     text_input = self.text_processor(
                         batch["text2"], return_tensors="pt", padding=True
                     )
+                    image_input, text_input = (
+                        image_input.to(self.image_model.device),
+                        text_input.to(self.text_model.device),
+                    )
                     loss = criterion(
                         self.image_model(**image_input).image_embeds,
                         self.text_model(**text_input).text_embeds,
@@ -547,6 +561,10 @@ class MultiModalKGCLIP(nn.Module):
                     )
                     image_input_2 = self.image_processor(
                         batch["image2"], return_tensors="pt", padding=True
+                    )
+                    image_input_1, image_input_2 = (
+                        image_input_1.to(self.image_model.device),
+                        image_input_2.to(self.image_model.device),
                     )
                     loss = criterion(
                         self.image_model(**image_input_1).image_embeds,
@@ -567,6 +585,7 @@ class MultiModalKGCLIP(nn.Module):
             text_input = self.text_processor(
                 text_data, return_tensors="pt", padding=True
             )
+            text_input = text_input.to(self.text_model.device)
             text_embedding = self.text_model(**text_input).text_embeds
             return text_embedding
 
@@ -577,6 +596,7 @@ class MultiModalKGCLIP(nn.Module):
             image_input = self.image_processor(
                 image_data, return_tensors="pt", padding=True
             )
+            image_input = image_input.to(self.image_model.device)
             image_embedding = self.image_model(**image_input).image_embeds
             return image_embedding
 
