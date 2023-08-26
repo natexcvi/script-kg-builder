@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import torch
+from preprocessing import process_image
 from sklearn.manifold import TSNE
 from thefuzz import fuzz
 from thefuzz import process as fuzz_process
@@ -21,8 +22,6 @@ from transformers import (
     CLIPTextModelWithProjection,
     CLIPVisionModelWithProjection,
 )
-
-from preprocessing import process_image
 
 
 class KGDatasetBatchSampler(Sampler):
@@ -468,12 +467,13 @@ class MultiModalKGCLIP(nn.Module):
     def __get_batch_type(self, batch):
         if "text1" in batch and "text2" in batch:
             return "text_text"
-        elif "text1" in batch and "image2" in batch:
+        if "text1" in batch and "image2" in batch:
             return "text_image"
-        elif "image1" in batch and "text2" in batch:
+        if "image1" in batch and "text2" in batch:
             return "image_text"
-        elif "image1" in batch and "image2" in batch:
+        if "image1" in batch and "image2" in batch:
             return "image_image"
+        raise ValueError("Invalid batch")
 
     def fit(self, data_loader: DataLoader):
         criterion = ContrastiveLoss(self.batch_size)
@@ -641,7 +641,7 @@ class MultiModalKGCLIP(nn.Module):
             )
 
 
-def plot_text_embeddings(model, text_data):
+def plot_text_embeddings(model, text_data, save_to: Optional[str] = None):
     tsne = TSNE(n_components=2, random_state=0, metric="cosine", perplexity=5)
     visualisation_set = text_data
     text_embeddings = model.predict_text(visualisation_set).cpu().numpy()
@@ -661,6 +661,8 @@ def plot_text_embeddings(model, text_data):
         title_y=0.9,
         title_font_size=30,
     )
+    if save_to is not None:
+        fig.write_image(save_to)
     fig.show()
 
 
@@ -698,7 +700,9 @@ if __name__ == "__main__":
 
     print("Pre-training:")
     model.evaluate(eval_1, eval_2)
-    plot_text_embeddings(model, list(set(eval_1 + eval_2)))
+    plot_text_embeddings(
+        model, list(set(eval_1 + eval_2)), save_to="pre_embeddings.svg"
+    )
     dataset = KGDataset(
         "../results/12_years_a_slave.csv", "/Users/nate/Downloads/Faces", max_pairs=1000
     )
@@ -713,4 +717,6 @@ if __name__ == "__main__":
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
-    plot_text_embeddings(model, list(set(eval_1 + eval_2)))
+    plot_text_embeddings(
+        model, list(set(eval_1 + eval_2)), save_to="post_embeddings.svg"
+    )
