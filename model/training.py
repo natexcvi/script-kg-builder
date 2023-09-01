@@ -1,7 +1,7 @@
 import itertools
 import json
 import os
-from typing import Optional
+from typing import Literal, Optional
 
 import networkx as nx
 import numpy as np
@@ -721,6 +721,74 @@ def plot_image_embeddings(
     fig.show()
 
 
+def pairwise_distances(
+    X, metric: Literal["cosine", "euclidean"] = "euclidean", **kwargs
+):
+    """
+    Compute the pairwise distance between X and Y.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+
+    metric : either "cosine" or "euclidean"
+
+    Returns
+    -------
+    distances : ndarray of shape (n_samples_X, n_samples_Y)
+    """
+    if metric == "cosine":
+        X_normalized = X / np.linalg.norm(X, axis=1)[:, np.newaxis]
+        return np.dot(X_normalized, X_normalized.T)
+    elif metric == "euclidean":
+        return np.sqrt(
+            np.sum(X**2, axis=1)[:, np.newaxis]
+            + np.sum(X**2, axis=1)[np.newaxis, :]
+            - 2 * np.dot(X, X.T)
+        )
+    raise ValueError(f"Invalid metric '{metric}'")
+
+
+def representation_dist_matrix(
+    model: "MultiModalKGCLIP", text_data=None, image_data=None
+):
+    if text_data is None and image_data is None:
+        raise ValueError("Either text_data or image_data must be provided")
+    if text_data is not None and image_data is not None:
+        raise ValueError("Only one of text_data or image_data must be provided")
+    if text_data is not None:
+        data = text_data
+        predict = model.predict_text
+    else:
+        data = image_data
+        predict = model.predict_image
+    embeddings = predict(data).cpu().numpy()
+    return pd.DataFrame(
+        pairwise_distances(embeddings, metric="cosine"),
+        columns=data,
+        index=data,
+    )
+
+
+def representation_dist_matrix_correlation(X, Y):
+    """
+    Compute the correlation between the pairwise distance matrices of X and Y.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+    Y : array-like of shape (n_samples, n_features)
+
+    Returns
+    -------
+    correlation : float
+    """
+    return np.corrcoef(
+        pairwise_distances(X, metric="cosine").ravel(),
+        pairwise_distances(Y, metric="cosine").ravel(),
+    )[0, 1]
+
+
 if __name__ == "__main__":
     batch_size = 128
 
@@ -778,18 +846,43 @@ if __name__ == "__main__":
         list(set(image_eval_1 + image_eval_2)),
         save_to="pre_embeddings_image.svg",
     )
+    pre_train_text_rdm = representation_dist_matrix(model, text_data=eval_1)
+    pre_train_image_rdm = representation_dist_matrix(model, image_data=image_eval_1)
     model.fit(
         DataLoader(
             dataset,
             batch_sampler=KGDatasetBatchSampler(dataset, batch_size),
         )
     )
-    print("Post-training:")
-    model.evaluate(eval_1, eval_2)
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
-    torch.save(model, os.path.join(output_dir, "model.pt"))
+    try:
+        torch.save(model, os.path.join(output_dir, "model.pt"))
+    except Exception as e:
+        print("Failed to save model: ", e)
+    print("Post-training:")
+    post_train_text_rdm = representation_dist_matrix(model, text_data=eval_1)
+    post_train_image_rdm = representation_dist_matrix(model, image_data=image_eval_1)
+    pre_train_image_text_corr = representation_dist_matrix_correlation(
+        pre_train_image_rdm, pre_train_text_rdm
+    )
+    post_train_image_text_corr = representation_dist_matrix_correlation(
+        post_train_image_rdm, post_train_text_rdm
+    )
+    print(
+        f"Pre-training image-text correlation: {pre_train_image_text_corr:.3f}, Post-training image-text correlation: {post_train_image_text_corr:.3f}"
+    )
+    pre_post_image_corr = representation_dist_matrix_correlation(
+        pre_train_image_rdm, post_train_image_rdm
+    )
+    pre_post_text_corr = representation_dist_matrix_correlation(
+        pre_train_text_rdm, post_train_text_rdm
+    )
+    print(
+        f"Pre-training image-image correlation: {pre_post_image_corr:.3f}, Post-training image-image correlation: {pre_post_text_corr:.3f}"
+    )
+    model.evaluate(eval_1, eval_2)
     plot_text_embeddings(
         model, list(set(eval_1 + eval_2)), save_to="post_embeddings_text.svg"
     )
