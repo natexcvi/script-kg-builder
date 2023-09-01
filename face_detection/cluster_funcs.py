@@ -1,6 +1,7 @@
 import io
 import os
 import math
+import time
 from PIL import Image
 from sklearn.cluster import DBSCAN
 from imutils import build_montages, paths
@@ -18,7 +19,7 @@ from mediapipe.tasks.python import vision
 
 from google.cloud import videointelligence_v1 as videointelligence
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "application_default_credentials.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "C:\\Users\\USER\\AppData\\Roaming\\gcloud\\application_default_credentials.json"
 
 IMGS_PER_FACE = 5
 
@@ -44,6 +45,8 @@ class ResizeUtils:
 def detect_faces(path):
     """Detects faces in a video."""
     
+    """ GOOGLE CLOUD VIDEO ANNOTATION API """
+    
     client = videointelligence.VideoIntelligenceServiceClient()
 
     if not path.startswith("gs"):
@@ -59,13 +62,23 @@ def detect_faces(path):
     context = videointelligence.VideoContext(face_detection_config=config)
 
     # Start the asynchronous request
-    operation = client.annotate_video(
-        request={
-            "features": [videointelligence.Feature.FACE_DETECTION],
-            "input_content": input_content,
-            "video_context": context,
-        }
-    )
+    if not path.startswith("gs"):
+        operation = client.annotate_video(
+            request={
+                "features": [videointelligence.Feature.FACE_DETECTION],
+                "input_content": input_content,
+                "video_context": context,
+            }
+        )
+    else: 
+        operation = client.annotate_video(
+            request={
+                "features": [videointelligence.Feature.FACE_DETECTION],
+                "input_uri": input_content,
+                "video_context": context,
+            }
+        )
+        
 
     print("\nProcessing video for face detection annotations.")
     result = operation.result(timeout=1000000)
@@ -74,19 +87,24 @@ def detect_faces(path):
 
     # Retrieve the first result, because a single video was processed.
     return result.annotation_results[0]
-
+    
 def extract_faces(annotation_result,movie_name,path,output):
     """ Extract faces pictures to a folder """
-    if os.path.exists(output):
-        shutil.rmtree(output)
-        time.sleep(0.5)
-    os.mkdir(output)
+    if not os.path.exists(output):
+        os.mkdir(output)
     faces_dir = os.path.join(output,"Faces")
+    if os.path.exists(faces_dir):
+        shutil.rmtree(faces_dir)
+        time.sleep(0.5)
     os.mkdir(faces_dir)
     all_dir = os.path.join(faces_dir,"all")
+    if os.path.exists(all_dir):
+        shutil.rmtree(all_dir)
+        time.sleep(0.5)
     os.mkdir(all_dir)
     
     # TODO movie = UPLOAD FROM GOOGLE CLOUD
+    #movie = VideoFileClip("D:\\OneDrive\\OneDrive - mail.tau.ac.il\\python\\face_detection\\12.Y34r5.4.5l4v3.13.br.sdm0v13sp01nt.c0m.mp4")
     movie = VideoFileClip(path)
     i = 0
     
@@ -107,6 +125,8 @@ def extract_faces(annotation_result,movie_name,path,output):
                     i+=1
                     frame = os.path.join(output,"image"+str(i)+"full.jpg")
                     movie.save_frame(frame, t=(obj.time_offset.seconds + obj.time_offset.microseconds / 1e6), withmask=False)
+                    #if i < 5:
+                        #print(obj.time_offset.seconds + obj.time_offset.microseconds / 1e6)
                     box = obj.normalized_bounding_box
                     
                     # Opens a image in RGB mode
@@ -139,6 +159,68 @@ def extract_faces(annotation_result,movie_name,path,output):
                     os.remove(frame)
                     
     return os.path.join(output,"Faces")
+
+def mp_detect_and_extract(path,output):
+    
+    if os.path.exists(output):
+        shutil.rmtree(output)
+        time.sleep(0.5)
+    os.mkdir(output)
+    faces_dir = os.path.join(output,"Faces")
+    os.mkdir(faces_dir)
+    all_dir = os.path.join(faces_dir,"all")
+    os.mkdir(all_dir)
+    
+    print("opened main dir")
+    
+    # Create an FaceDetector object.
+    BaseOptions = mp.tasks.BaseOptions
+    FaceDetector = mp.tasks.vision.FaceDetector
+    FaceDetectorOptions = mp.tasks.vision.FaceDetectorOptions
+    VisionRunningMode = mp.tasks.vision.RunningMode
+    
+    options = FaceDetectorOptions(
+        base_options=BaseOptions(model_asset_path='blaze_face_short_range.tflite'),
+        running_mode=VisionRunningMode.VIDEO, min_detection_confidence=0.2,min_suppression_threshold=0)
+    
+    print("created detector")
+    
+    #load the video file
+    movie = cv2.VideoCapture(path)
+    frame_index = 0
+    total_faces = 0
+    video_file_fps = movie.get(cv2.CAP_PROP_FPS)
+    
+    print("loaded movie ", movie, " fps = ", video_file_fps)
+    with FaceDetector.create_from_options(options) as detector:
+        while movie.isOpened:
+            frame_index +=1
+            ret, frame = movie.read()
+            if not ret:
+                print("Can't receive frame (stream end?). Exiting ...")
+                break
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.array(frame))
+            frame_timestamp_ms = int(1000 * frame_index / video_file_fps)
+            # Perform face detection on the provided single image.
+            # The face detector must be created with the video mode.
+            face_detector_result = detector.detect_for_video(mp_image, frame_timestamp_ms)
+            face_index = 0
+            print("detected ", len(face_detector_result.detections), " faces in frame number ", frame_index)
+            for detection in face_detector_result.detections:
+                face_index += 1
+                total_faces += 1
+                bbox = detection.bounding_box
+                # Cropping an image
+                cropped_image = frame[bbox.origin_y:bbox.origin_y + bbox.height, bbox.origin_x:bbox.origin_x + bbox.width]
+                face_path = os.path.join(all_dir,str(frame_index)+"_"+str(face_index)+".jpg")
+                # Save the cropped image
+                cv2.imwrite(face_path, cropped_image)
+                
+                #print("frame: ", frame_index, " face: ", face_index, " saved, bbox: ", bbox, " cofidence: ", detection.categories[0].score)
+        
+    print(total_faces, " faces extracted")
+    return os.path.join(output,"Faces")
+            
 """
 # Option - using mediapipe landmarks
 
@@ -194,8 +276,8 @@ def cluster(embeddings):
     """
     
     # cluster the embeddings
-    clt = DBSCAN(eps=0.8, metric="euclidean", min_samples=IMGS_PER_FACE+1)
-    clt.fit(embeddings)
+    clt = DBSCAN(eps=0.75, metric="euclidean", min_samples=IMGS_PER_FACE+1)
+    clt = clt.fit(embeddings)
 
     # determine the total number of unique faces found in the dataset
     labelIDs = np.unique(clt.labels_)
@@ -206,9 +288,14 @@ def cluster(embeddings):
 
 def split_images(labels,faces_path):
     opened_labels = {}
-    os.mkdir(os.path.join(faces_path,"clustered"))
+    clusters_path = os.path.join(faces_path,"clustered")
+    if os.path.exists(clusters_path):
+        shutil.rmtree(clusters_path)
+        time.sleep(0.5)
+    os.mkdir(clusters_path)
     faces = os.listdir(os.path.join(faces_path,"all"))
-    for i in range(len(faces)):
+    
+    for i in tqdm(range(len(faces)), desc = "faces clustering"):
         label = labels[i]
         if label not in opened_labels:
             opened_labels[label] = 0
@@ -217,3 +304,33 @@ def split_images(labels,faces_path):
         src = os.path.join(faces_path,"all",faces[i])
         dst = os.path.join(faces_path,"clustered",str(label),faces[i])
         shutil.copy(src, dst)
+        
+def cluster_naming(characters_embeddings, embeddings, output):
+    faces_path = os.path.join(output,"Faces")
+    characters_path = os.path.join(output,"characters")
+    clusters_path = os.path.join(faces_path,"clustered")
+    characters = os.listdir(characters_path)
+    for cluster in os.listdir(clusters_path):
+        if cluster != "-1":
+            cluster_path = os.path.join(clusters_path,cluster)
+            best_dist = np.inf
+            for character_i in range(len(characters)):
+                avg_dist = 0
+                character_embedding = characters_embeddings[character_i]
+                character_name = os.path.splitext(characters[character_i])[0]
+                if avg_dist == 0:
+                    print("embedding for character ", character_name, ":", character_embedding)
+                for img_i in tqdm(range(len(os.listdir(cluster_path))), desc = "calculating distance for cluster "+str(cluster)+" from character "+str(character_name)):
+                    if avg_dist == 0:
+                        print("embedding for: ", img_i, ":", embeddings[img_i])
+                    avg_dist += np.linalg.norm(embeddings[img_i]-character_embedding)
+                avg_dist = avg_dist/len(os.listdir(cluster_path))
+                print("avg dist: ", avg_dist)
+                if avg_dist < best_dist:
+                    best_dist = avg_dist
+                    best_character = character_name
+                    print("!!! NEW BEST CHARACTER")
+            os.rename(cluster_path,os.path.join(clusters_path,cluster+" "+best_character))
+            print("CHANGED CLUSTER ", cluster, " TO: ", best_character)
+            
+                    

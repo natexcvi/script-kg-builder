@@ -15,6 +15,8 @@ if __name__ == "__main__":
     output = args.output
     if output == "output":
         output = os.path.join(os.getcwd(),movie)
+        
+    #faces_path = mp_detect_and_extract(path,output) #USING MEDIAPIPE FRAME BY FRAME
     
     ''' Retrieve faces boxes and times from a movie '''
     annotation_result = detect_faces(path)
@@ -24,10 +26,12 @@ if __name__ == "__main__":
     faces_path = extract_faces(annotation_result,movie,path,output)
     print("extreacted faces images to: ", faces_path)
     
-    #faces_path = "D:\\OneDrive\\OneDrive - mail.tau.ac.il\\python\\face_detection\\Footage\\Faces"
+    #faces_path = "D:\\OneDrive\\OneDrive - mail.tau.ac.il\\python\\script-kg-builder\\face_detection\\12.Y34r5.4.5l4v3\\Faces\\Faces"
     
     ''' extrect embeddings for each face '''
-    embeddings = pymain(os.path.join(faces_path,"all"))
+    #embeddings = pymain(os.path.join(faces_path,"all"))
+    #np.save(os.path.join(faces_path,"embeddings"),embeddings)
+    embeddings = np.load(os.path.join(faces_path,"embeddings.npy"))
     print("Extrected embeddings")
     
     ''' Cluster the  faces by their landmarks '''
@@ -38,7 +42,7 @@ if __name__ == "__main__":
     split_images(labels,faces_path)
     print("images splitted.")
     
-    
-        
-        
-            
+    ''' Name the different clusters '''
+    #characters_embeddings = pymain(os.path.join(output,"characters"))
+    #print("got characters embeddings")
+    #cluster_naming(characters_embeddings, embeddings, output)
