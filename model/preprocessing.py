@@ -17,6 +17,7 @@ normalize_std = [0.229, 0.224, 0.225]
 preprocess = transforms.Compose(
     [
         transforms.Resize((image_size, image_size)),
+        transforms.PILToTensor(),
     ]
 )
 
