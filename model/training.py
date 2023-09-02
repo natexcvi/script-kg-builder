@@ -841,6 +841,7 @@ if __name__ == "__main__":
         "Merrill Brown",
         "Judge Turner",
         "Solomon",
+        "William Ford",
         "A picture of an apple",
         "A glass of water on the table",
     ]
@@ -857,6 +858,7 @@ if __name__ == "__main__":
         "Abram Hamilton",
         "Solomon",
         "Clemens Ray",
+        "Edwin Epps",
         "A picture of an orange",
         "An airplane in the sky",
     ]
