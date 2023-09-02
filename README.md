@@ -1,6 +1,6 @@
 # Modelling the Semantic Component in Visual Perception of Human Faces by Training a DNN on a Visuo-semantic Knowledge Graph
 
-This repository accompanies our project submitted as part of the _Workshop on Computational Methods in Brain Research_ at Tel Aviv University, 2023, under the supervision of Idan Grossbard, Prof. Galit Yovel & Prof. Amir Globerson.
+This repository accompanies our project submitted by Yonatan Elsaesser and Nate Liebmann as part of the _Workshop on Computational Methods in Brain Research_ at Tel Aviv University, 2023, under the supervision of Idan Grossbard, Prof. Galit Yovel & Prof. Amir Globerson.
 
 ## Abstract
 Recognition of human faces is known to rely on more than merely visual characteristics, with semantic information appearing to play an important role in our mental representation of others. Multi-modal DNNs like CLIP mark a promising direction in modelling human perception, but fail to capture its full semantic depth. We present an end-to-end framework for fine-tuning CLIP on a visuo-semantic knowledge graph derived automatically from a motion picture's scirpt and video. We show, anecdotally, that the learned reprentations express the semantics of the film. More work over a larger dataset is needed to generalise the results.
