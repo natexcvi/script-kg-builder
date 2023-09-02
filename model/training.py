@@ -15,9 +15,12 @@ from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (AutoProcessor, AutoTokenizer,
-                          CLIPTextModelWithProjection,
-                          CLIPVisionModelWithProjection)
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPTextModelWithProjection,
+    CLIPVisionModelWithProjection,
+)
 
 from preprocessing import process_image
 
@@ -691,6 +694,9 @@ def plot_text_embeddings(model, text_data, save_to: Optional[str] = None):
         title_font_size=30,
         font=dict(size=18),
     )
+    # auto zoom to show all text
+    fig.update_xaxes(range=[text_embeddings["x"].min() - 1, text_embeddings["x"].max()])
+    fig.update_yaxes(range=[text_embeddings["y"].min() - 1, text_embeddings["y"].max()])
     if save_to is not None:
         fig.write_image(save_to)
     fig.show()
@@ -895,21 +901,24 @@ if __name__ == "__main__":
     )
     text_eval_entities = [entity for entity in set(eval_1 + eval_2)]
     image_eval_entities = tuple_uniq_by_index(image_eval_1 + image_eval_2, 0)
-    pre_train_text_rdm = representation_dist_matrix(
-        model,
-        text_data=text_eval_entities,
+
+    pre_train_text_embeddings = model.predict_text(text_eval_entities).cpu().numpy()
+    pre_train_text_embeddings_have_images = (
+        model.predict_text(
+            [
+                entity
+                for entity in text_eval_entities
+                if entity
+                in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+            ]
+        )
+        .cpu()
+        .numpy()
     )
-    pre_train_text_rdm_have_images = representation_dist_matrix(
-        model,
-        text_data=[
-            entity
-            for entity in text_eval_entities
-            if entity in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
-        ],
+    pre_train_image_embeddings = (
+        model.predict_image([image for _, image in image_eval_entities]).cpu().numpy()
     )
-    pre_train_image_rdm = representation_dist_matrix(
-        model, image_data=image_eval_entities
-    )
+
     model.fit(
         DataLoader(
             dataset,
@@ -927,34 +936,37 @@ if __name__ == "__main__":
     except Exception as e:
         print("Failed to save model: ", e)
     print("Post-training:")
-    post_train_text_rdm = representation_dist_matrix(
-        model, text_data=text_eval_entities
+    post_train_text_embeddings = model.predict_text(text_eval_entities).cpu().numpy()
+    post_train_text_embeddings_have_images = (
+        model.predict_text(
+            [
+                entity
+                for entity in text_eval_entities
+                if entity
+                in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+            ]
+        )
+        .cpu()
+        .numpy()
     )
-    post_train_text_rdm_have_images = representation_dist_matrix(
-        model,
-        text_data=[
-            entity
-            for entity in text_eval_entities
-            if entity in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
-        ],
+    post_train_image_embeddings = (
+        model.predict_image([image for _, image in image_eval_entities]).cpu().numpy()
     )
-    post_train_image_rdm = representation_dist_matrix(
-        model, image_data=image_eval_entities
+
+    pre_train_image_text_corr, pre_p_val = distance_corr(
+        pre_train_text_embeddings_have_images, pre_train_image_embeddings
     )
-    pre_train_image_text_corr, pre_p_val = representation_dist_matrix_correlation(
-        pre_train_image_rdm, pre_train_text_rdm_have_images
-    )
-    post_train_image_text_corr, post_p_val = representation_dist_matrix_correlation(
-        post_train_image_rdm, post_train_text_rdm_have_images
+    post_train_image_text_corr, post_p_val = distance_corr(
+        post_train_text_embeddings_have_images, post_train_image_embeddings
     )
     print(
         f"Pre-training image-text correlation: {pre_train_image_text_corr:.3f} (p<{pre_p_val:.3f}), Post-training image-text correlation: {post_train_image_text_corr:.3f} (p<{post_p_val:.3f})"
     )
-    pre_post_image_corr, image_p_val = representation_dist_matrix_correlation(
-        pre_train_image_rdm, post_train_image_rdm
+    pre_post_image_corr, image_p_val = distance_corr(
+        pre_train_image_embeddings, post_train_image_embeddings
     )
-    pre_post_text_corr, text_p_val = representation_dist_matrix_correlation(
-        pre_train_text_rdm, post_train_text_rdm
+    pre_post_text_corr, text_p_val = distance_corr(
+        pre_train_text_embeddings, post_train_text_embeddings
     )
     print(
         f"Pre-post-training image-image correlation: {pre_post_image_corr:.3f} (p<{image_p_val:.3f}), Pre-post-training text-text correlation: {pre_post_text_corr:.3f} (p<{text_p_val:.3f})"
