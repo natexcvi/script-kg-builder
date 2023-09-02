@@ -843,7 +843,7 @@ if __name__ == "__main__":
 
     print("Pre-training:")
     model.evaluate(eval_1, eval_2)
-    model.evaluate(image_eval_1, image_eval_2)
+    model.evaluate(image_data_1=image_eval_1, image_data_2=image_eval_2)
     plot_text_embeddings(
         model, list(set(eval_1 + eval_2)), save_to="pre_embeddings_text.svg"
     )
