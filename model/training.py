@@ -884,6 +884,34 @@ if __name__ == "__main__":
         max_pairs=1000,
     )
 
+    text_eval_entities = [
+        "Solomon Northup",
+        "Patsey",
+        "Tibeats",
+        "Armsby",
+        "Mrs. Epps",
+        "Mistress Shaw",
+        "William Ford",
+        "Judge Turner",
+        "Master Shaw",
+        "Edwin Epps",
+        "Abram Hamilton",
+        "Eliza",
+        "Clemens Ray",
+        "Anne Northup",
+        "Alonzo Northup",
+        "Margaret Northup",
+        "Sam",
+        "Uncle Abram",
+        "Free man",
+        "Bass",
+    ]
+
+    image_eval_entities = [
+        (name, images[0])
+        for name, images in dataset.match_face_images(text_eval_entities).items()
+    ]
+
     matching_images = dataset.match_face_images(list(set(eval_1 + eval_2)))
 
     image_eval_1 = [
@@ -908,8 +936,6 @@ if __name__ == "__main__":
         tuple_uniq_by_index(image_eval_1 + image_eval_2, 0),
         save_to="pre_embeddings_image.svg",
     )
-    text_eval_entities = [entity for entity in set(eval_1 + eval_2)]
-    image_eval_entities = tuple_uniq_by_index(image_eval_1 + image_eval_2, 0)
 
     pre_train_text_embeddings = model.predict_text(text_eval_entities).cpu().numpy()
     pre_train_text_embeddings_have_images = (
