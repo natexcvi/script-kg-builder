@@ -969,7 +969,7 @@ if __name__ == "__main__":
         post_train_text_embeddings_have_images, post_train_image_embeddings
     )
     print(
-        f"Pre-training image-text correlation: {pre_train_image_text_corr:.3f} (p<{pre_p_val:.3f}), Post-training image-text correlation: {post_train_image_text_corr:.3f} (p<{post_p_val:.3f})"
+        f"Pre-training image-text correlation: {pre_train_image_text_corr:.3f} (p<{pre_p_val:.3f}; n={len(post_train_text_embeddings_have_images)}), Post-training image-text correlation: {post_train_image_text_corr:.3f} (p<{post_p_val:.3f}; n={len(post_train_text_embeddings_have_images)})"
     )
     pre_post_image_corr, image_p_val = distance_corr(
         pre_train_image_embeddings, post_train_image_embeddings
@@ -978,7 +978,16 @@ if __name__ == "__main__":
         pre_train_text_embeddings, post_train_text_embeddings
     )
     print(
-        f"Pre-post-training image-image correlation: {pre_post_image_corr:.3f} (p<{image_p_val:.3f}), Pre-post-training text-text correlation: {pre_post_text_corr:.3f} (p<{text_p_val:.3f})"
+        f"Pre-post-training image-image correlation: {pre_post_image_corr:.3f} (p<{image_p_val:.3f}; n={len(pre_train_text_embeddings)}), Pre-post-training text-text correlation: {pre_post_text_corr:.3f} (p<{text_p_val:.3f}; n={len(pre_train_text_embeddings)})"
+    )
+    pre_image_post_text_corr, pre_image_post_text_p_val = distance_corr(
+        pre_train_image_embeddings, post_train_text_embeddings_have_images
+    )
+    pre_text_post_image_corr, pre_text_post_image_p_val = distance_corr(
+        pre_train_text_embeddings_have_images, post_train_image_embeddings
+    )
+    print(
+        f"Pre-training image-post-training text correlation: {pre_image_post_text_corr:.3f} (p<{pre_image_post_text_p_val:.3f}; n={len(post_train_image_embeddings)}), Pre-training text-post-training image correlation: {pre_text_post_image_corr:.3f} (p<{pre_text_post_image_p_val:.3f}; n={len(post_train_image_embeddings)})"
     )
     model.evaluate(eval_1, eval_2)
     model.evaluate(image_data_1=image_eval_1, image_data_2=image_eval_2)
