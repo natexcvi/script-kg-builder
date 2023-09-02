@@ -15,9 +15,12 @@ from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (AutoProcessor, AutoTokenizer,
-                          CLIPTextModelWithProjection,
-                          CLIPVisionModelWithProjection)
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPTextModelWithProjection,
+    CLIPVisionModelWithProjection,
+)
 
 from preprocessing import process_image
 
@@ -691,8 +694,12 @@ def plot_text_embeddings(model, text_data, save_to: Optional[str] = None):
         title_font_size=30,
         font=dict(size=18),
     )
-    fig.update_xaxes(range=[text_embeddings["x"].min() - 50, text_embeddings["x"].max() + 50])
-    fig.update_yaxes(range=[text_embeddings["y"].min() - 50, text_embeddings["y"].max() + 50])
+    fig.update_xaxes(
+        range=[text_embeddings["x"].min() - 50, text_embeddings["x"].max() + 50]
+    )
+    fig.update_yaxes(
+        range=[text_embeddings["y"].min() - 5, text_embeddings["y"].max() + 5]
+    )
     if save_to is not None:
         fig.write_image(save_to)
     fig.show()
@@ -727,8 +734,12 @@ def plot_image_embeddings(
         title_font_size=30,
         font=dict(size=18),
     )
-    fig.update_xaxes(range=[image_embeddings["x"].min() - 50, image_embeddings["x"].max() + 50])
-    fig.update_yaxes(range=[image_embeddings["y"].min() - 50, image_embeddings["y"].max() + 50])
+    fig.update_xaxes(
+        range=[image_embeddings["x"].min() - 50, image_embeddings["x"].max() + 50]
+    )
+    fig.update_yaxes(
+        range=[image_embeddings["y"].min() - 5, image_embeddings["y"].max() + 5]
+    )
     if save_to is not None:
         fig.write_image(save_to)
     fig.show()
