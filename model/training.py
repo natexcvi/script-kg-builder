@@ -13,12 +13,9 @@ from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (
-    AutoProcessor,
-    AutoTokenizer,
-    CLIPTextModelWithProjection,
-    CLIPVisionModelWithProjection,
-)
+from transformers import (AutoProcessor, AutoTokenizer,
+                          CLIPTextModelWithProjection,
+                          CLIPVisionModelWithProjection)
 
 from preprocessing import process_image
 
@@ -422,7 +419,7 @@ class MultiModalKGCLIP(nn.Module):
 
     @staticmethod
     def __get_models():
-        model_name = "openai/clip-vit-large-patch14"
+        model_name = "openai/clip-vit-base-patch16"
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Load the CLIP model and processor
@@ -760,7 +757,9 @@ def representation_dist_matrix(
         data = text_data
         predict = model.predict_text
     else:
-        data = image_data
+        _, visualisation_set = list(zip(*image_data))
+        visualisation_set = list(visualisation_set)
+        data = visualisation_set
         predict = model.predict_image
     embeddings = predict(data).cpu().numpy()
     return pd.DataFrame(
@@ -825,7 +824,7 @@ if __name__ == "__main__":
 
     dataset = KGDataset(
         "../results/12_years_a_slave.csv",
-        "/Users/nate/Downloads/Faces-2/faces",
+        "/Users/nate/Downloads/clustered-finetuned/single images",
         max_pairs=1000,
     )
 
@@ -846,14 +845,28 @@ if __name__ == "__main__":
         list(set(image_eval_1 + image_eval_2)),
         save_to="pre_embeddings_image.svg",
     )
-    pre_train_text_rdm = representation_dist_matrix(model, text_data=eval_1)
-    pre_train_image_rdm = representation_dist_matrix(model, image_data=image_eval_1)
+    text_eval_entities = [
+        entity
+        for entity in set(eval_1 + eval_2)
+        if entity in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+    ]
+    image_eval_entities = list(set(image_eval_1 + image_eval_2))
+    pre_train_text_rdm = representation_dist_matrix(
+        model,
+        text_data=text_eval_entities,
+    )
+    pre_train_image_rdm = representation_dist_matrix(
+        model, image_data=image_eval_entities
+    )
     model.fit(
         DataLoader(
             dataset,
             batch_sampler=KGDatasetBatchSampler(dataset, batch_size),
         )
     )
+    # model = MultiModalKGCLIP.from_pretrained(
+    #     "/Users/nate/Downloads/results-2/fine_tuned_clip_model"
+    # )
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
@@ -862,8 +875,12 @@ if __name__ == "__main__":
     except Exception as e:
         print("Failed to save model: ", e)
     print("Post-training:")
-    post_train_text_rdm = representation_dist_matrix(model, text_data=eval_1)
-    post_train_image_rdm = representation_dist_matrix(model, image_data=image_eval_1)
+    post_train_text_rdm = representation_dist_matrix(
+        model, text_data=text_eval_entities
+    )
+    post_train_image_rdm = representation_dist_matrix(
+        model, image_data=image_eval_entities
+    )
     pre_train_image_text_corr = representation_dist_matrix_correlation(
         pre_train_image_rdm, pre_train_text_rdm
     )
@@ -880,7 +897,7 @@ if __name__ == "__main__":
         pre_train_text_rdm, post_train_text_rdm
     )
     print(
-        f"Pre-training image-image correlation: {pre_post_image_corr:.3f}, Post-training image-image correlation: {pre_post_text_corr:.3f}"
+        f"Pre-post-training image-image correlation: {pre_post_image_corr:.3f}, Pre-post-training text-text correlation: {pre_post_text_corr:.3f}"
     )
     model.evaluate(eval_1, eval_2)
     plot_text_embeddings(
