@@ -959,9 +959,6 @@ if __name__ == "__main__":
             batch_sampler=KGDatasetBatchSampler(dataset, batch_size),
         )
     )
-    # model = MultiModalKGCLIP.from_pretrained(
-    #     "/Users/nate/Downloads/results-2/fine_tuned_clip_model"
-    # )
     output_dir = "./fine_tuned_clip_model"
     model.save_pretrained(output_dir)
     print(f"Saved model to '{output_dir}'")
