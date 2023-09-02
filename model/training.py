@@ -14,9 +14,12 @@ from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (AutoProcessor, AutoTokenizer,
-                          CLIPTextModelWithProjection,
-                          CLIPVisionModelWithProjection)
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPTextModelWithProjection,
+    CLIPVisionModelWithProjection,
+)
 
 from preprocessing import process_image
 
@@ -620,27 +623,35 @@ class MultiModalKGCLIP(nn.Module):
         if text_data_1 is not None and text_data_2 is not None:
             data_1 = text_data_1
             data_2 = text_data_2
+            labels_1 = data_1
+            labels_2 = data_2
             kind_1 = "text1"
             kind_2 = "text2"
             predict1 = self.predict_text
             predict2 = self.predict_text
         elif text_data_1 is not None and image_data_2 is not None:
             data_1 = text_data_1
-            data_2 = image_data_2
+            data_2 = list(list(zip(*image_data_2))[1])
+            labels_1 = data_1
+            labels_2 = list(list(zip(*image_data_2))[0])
             kind_1 = "text1"
             kind_2 = "image2"
             predict1 = self.predict_text
             predict2 = self.predict_image
         elif image_data_1 is not None and text_data_2 is not None:
-            data_1 = image_data_1
+            data_1 = list(list(zip(*image_data_1))[1])
             data_2 = text_data_2
+            labels_1 = list(list(zip(*image_data_1))[0])
+            labels_2 = data_2
             kind_1 = "image1"
             kind_2 = "text2"
             predict1 = self.predict_image
             predict2 = self.predict_text
         elif image_data_1 is not None and image_data_2 is not None:
-            data_1 = image_data_1
-            data_2 = image_data_2
+            data_1 = list(list(zip(*image_data_1))[1])
+            data_2 = list(list(zip(*image_data_2))[1])
+            labels_1 = list(list(zip(*image_data_1))[0])
+            labels_2 = list(list(zip(*image_data_2))[0])
             kind_1 = "image1"
             kind_2 = "image2"
             predict1 = self.predict_image
@@ -654,8 +665,8 @@ class MultiModalKGCLIP(nn.Module):
             print(
                 pd.DataFrame.from_dict(
                     {
-                        kind_1: data_1,
-                        kind_2: data_2,
+                        kind_1: labels_1,
+                        kind_2: labels_2,
                         "similarity": similarity_scores.tolist(),
                     }
                 )
