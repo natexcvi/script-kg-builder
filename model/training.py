@@ -943,8 +943,7 @@ if __name__ == "__main__":
             [
                 entity
                 for entity in text_eval_entities
-                if entity
-                in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+                if entity in set(zip(*image_eval_entities))[0]
             ]
         )
         .cpu()
@@ -977,8 +976,7 @@ if __name__ == "__main__":
             [
                 entity
                 for entity in text_eval_entities
-                if entity
-                in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+                if entity in set(zip(*image_eval_entities))[0]
             ]
         )
         .cpu()
