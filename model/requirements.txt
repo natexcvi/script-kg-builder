@@ -12,3 +12,4 @@ scikit-learn
 hmni
 thefuzz
 psutil
+pingouin

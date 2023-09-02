@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import torch
+from pingouin import distance_corr
 from sklearn.manifold import TSNE
 from thefuzz import process as fuzz_process
 from torch import nn, optim
@@ -769,7 +770,7 @@ def representation_dist_matrix(
     )
 
 
-def representation_dist_matrix_correlation(X, Y):
+def representation_dist_matrix_correlation(X, Y) -> tuple[float, float]:
     """
     Compute the correlation between the pairwise distance matrices of X and Y.
 
@@ -781,11 +782,12 @@ def representation_dist_matrix_correlation(X, Y):
     Returns
     -------
     correlation : float
+    p_value : float
     """
-    return np.corrcoef(
+    return distance_corr(
         pairwise_distances(X, metric="cosine").ravel(),
         pairwise_distances(Y, metric="cosine").ravel(),
-    )[0, 1]
+    )
 
 
 if __name__ == "__main__":
@@ -804,6 +806,8 @@ if __name__ == "__main__":
         "Edwin Epps",
         "William Ford",
         "Merrill Brown",
+        "Judge Turner",
+        "Solomon",
         "A picture of an apple",
         "A glass of water on the table",
     ]
@@ -818,6 +822,8 @@ if __name__ == "__main__":
         "Solomon",
         "Solomon",
         "Abram Hamilton",
+        "Solomon",
+        "Clemens Ray",
         "A picture of an orange",
         "An airplane in the sky",
     ]
@@ -837,6 +843,7 @@ if __name__ == "__main__":
 
     print("Pre-training:")
     model.evaluate(eval_1, eval_2)
+    model.evaluate(image_eval_1, image_eval_2)
     plot_text_embeddings(
         model, list(set(eval_1 + eval_2)), save_to="pre_embeddings_text.svg"
     )
@@ -845,15 +852,19 @@ if __name__ == "__main__":
         list(set(image_eval_1 + image_eval_2)),
         save_to="pre_embeddings_image.svg",
     )
-    text_eval_entities = [
-        entity
-        for entity in set(eval_1 + eval_2)
-        if entity in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
-    ]
+    text_eval_entities = [entity for entity in set(eval_1 + eval_2)]
     image_eval_entities = list(set(image_eval_1 + image_eval_2))
     pre_train_text_rdm = representation_dist_matrix(
         model,
         text_data=text_eval_entities,
+    )
+    pre_train_text_rdm_have_images = representation_dist_matrix(
+        model,
+        text_data=[
+            entity
+            for entity in text_eval_entities
+            if entity in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+        ],
     )
     pre_train_image_rdm = representation_dist_matrix(
         model, image_data=image_eval_entities
@@ -878,28 +889,37 @@ if __name__ == "__main__":
     post_train_text_rdm = representation_dist_matrix(
         model, text_data=text_eval_entities
     )
+    post_train_text_rdm_have_images = representation_dist_matrix(
+        model,
+        text_data=[
+            entity
+            for entity in text_eval_entities
+            if entity in set(list(zip(*image_eval_1))[0] + list(zip(*image_eval_2))[0])
+        ],
+    )
     post_train_image_rdm = representation_dist_matrix(
         model, image_data=image_eval_entities
     )
-    pre_train_image_text_corr = representation_dist_matrix_correlation(
-        pre_train_image_rdm, pre_train_text_rdm
+    pre_train_image_text_corr, pre_p_val = representation_dist_matrix_correlation(
+        pre_train_image_rdm, pre_train_text_rdm_have_images
     )
-    post_train_image_text_corr = representation_dist_matrix_correlation(
-        post_train_image_rdm, post_train_text_rdm
+    post_train_image_text_corr, post_p_val = representation_dist_matrix_correlation(
+        post_train_image_rdm, post_train_text_rdm_have_images
     )
     print(
-        f"Pre-training image-text correlation: {pre_train_image_text_corr:.3f}, Post-training image-text correlation: {post_train_image_text_corr:.3f}"
+        f"Pre-training image-text correlation: {pre_train_image_text_corr:.3f} (p<{pre_p_val:.3f}), Post-training image-text correlation: {post_train_image_text_corr:.3f} (p<{post_p_val:.3f})"
     )
-    pre_post_image_corr = representation_dist_matrix_correlation(
+    pre_post_image_corr, image_p_val = representation_dist_matrix_correlation(
         pre_train_image_rdm, post_train_image_rdm
     )
-    pre_post_text_corr = representation_dist_matrix_correlation(
+    pre_post_text_corr, text_p_val = representation_dist_matrix_correlation(
         pre_train_text_rdm, post_train_text_rdm
     )
     print(
-        f"Pre-post-training image-image correlation: {pre_post_image_corr:.3f}, Pre-post-training text-text correlation: {pre_post_text_corr:.3f}"
+        f"Pre-post-training image-image correlation: {pre_post_image_corr:.3f} (p<{image_p_val:.3f}), Pre-post-training text-text correlation: {pre_post_text_corr:.3f} (p<{text_p_val:.3f})"
     )
     model.evaluate(eval_1, eval_2)
+    model.evaluate(image_data_1=image_eval_1, image_data_2=image_eval_2)
     plot_text_embeddings(
         model, list(set(eval_1 + eval_2)), save_to="post_embeddings_text.svg"
     )
