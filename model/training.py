@@ -845,11 +845,17 @@ if __name__ == "__main__":
         max_pairs=1000,
     )
 
+    matching_images = dataset.match_face_images(list(set(eval_1 + eval_2)))
+
     image_eval_1 = [
-        (name, images[0]) for name, images in dataset.match_face_images(eval_1).items()
+        (name, matching_images[name][0])
+        for i, name in enumerate(eval_1)
+        if name in matching_images and eval_2[i] in matching_images
     ]
     image_eval_2 = [
-        (name, images[0]) for name, images in dataset.match_face_images(eval_2).items()
+        (name, matching_images[name][0])
+        for i, name in enumerate(eval_2)
+        if name in matching_images and eval_1[i] in matching_images
     ]
 
     print("Pre-training:")
