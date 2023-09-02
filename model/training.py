@@ -8,18 +8,16 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import torch
+from PIL.Image import Image
 from pingouin import distance_corr
 from sklearn.manifold import TSNE
 from thefuzz import process as fuzz_process
 from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset, Sampler
 from tqdm import tqdm
-from transformers import (
-    AutoProcessor,
-    AutoTokenizer,
-    CLIPTextModelWithProjection,
-    CLIPVisionModelWithProjection,
-)
+from transformers import (AutoProcessor, AutoTokenizer,
+                          CLIPTextModelWithProjection,
+                          CLIPVisionModelWithProjection)
 
 from preprocessing import process_image
 
@@ -691,6 +689,7 @@ def plot_text_embeddings(model, text_data, save_to: Optional[str] = None):
         title_x=0.5,
         title_y=0.9,
         title_font_size=30,
+        font=dict(size=18),
     )
     if save_to is not None:
         fig.write_image(save_to)
@@ -698,7 +697,7 @@ def plot_text_embeddings(model, text_data, save_to: Optional[str] = None):
 
 
 def plot_image_embeddings(
-    model, image_data: list[tuple[str, np.ndarray]], save_to: Optional[str] = None
+    model, image_data: list[tuple[str, Image]], save_to: Optional[str] = None
 ):
     tsne = TSNE(
         n_components=2,
@@ -724,6 +723,7 @@ def plot_image_embeddings(
         title_x=0.5,
         title_y=0.9,
         title_font_size=30,
+        font=dict(size=18),
     )
     if save_to is not None:
         fig.write_image(save_to)
@@ -801,6 +801,28 @@ def representation_dist_matrix_correlation(X, Y) -> tuple[float, float]:
     )
 
 
+def tuple_uniq_by_index(tuples: list[tuple], index: int) -> list[tuple]:
+    """
+    Remove duplicates from a list of tuples based on a given index.
+
+    Parameters
+    ----------
+    tuples : the list of tuples
+    index : the index to use for comparison
+
+    Returns
+    -------
+    unique_tuples : the list of tuples with duplicates removed
+    """
+    seen = set()
+    unique_tuples = []
+    for tup in tuples:
+        if tup[index] not in seen:
+            seen.add(tup[index])
+            unique_tuples.append(tup)
+    return unique_tuples
+
+
 if __name__ == "__main__":
     batch_size = 128
 
@@ -841,7 +863,7 @@ if __name__ == "__main__":
 
     dataset = KGDataset(
         "../results/12_years_a_slave.csv",
-        "/Users/nate/Downloads/clustered-finetuned/single images",
+        "/Users/nate/Downloads/clustered-finetuned/test",
         max_pairs=1000,
     )
 
@@ -866,11 +888,11 @@ if __name__ == "__main__":
     )
     plot_image_embeddings(
         model,
-        list(set(image_eval_1 + image_eval_2)),
+        tuple_uniq_by_index(image_eval_1 + image_eval_2, 0),
         save_to="pre_embeddings_image.svg",
     )
     text_eval_entities = [entity for entity in set(eval_1 + eval_2)]
-    image_eval_entities = list(set(image_eval_1 + image_eval_2))
+    image_eval_entities = tuple_uniq_by_index(image_eval_1 + image_eval_2, 0)
     pre_train_text_rdm = representation_dist_matrix(
         model,
         text_data=text_eval_entities,
@@ -942,6 +964,6 @@ if __name__ == "__main__":
     )
     plot_image_embeddings(
         model,
-        list(set(image_eval_1 + image_eval_2)),
+        tuple_uniq_by_index(image_eval_1 + image_eval_2, 0),
         save_to="post_embeddings_image.svg",
     )
