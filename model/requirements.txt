@@ -19,3 +19,7 @@ time
 shutil
 math
 cv2
+hmni
+thefuzz
+psutil
+pingouin
