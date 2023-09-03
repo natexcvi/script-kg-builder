@@ -1,11 +1,10 @@
+#from Galit Yovel lab git: https://github.com/gylab-TAU/variability_face_recognition
+
 import os
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
 from argparse import ArgumentParser
-from numpy.linalg import norm
 from PIL import Image
-import csv
 import torch
 from tqdm import tqdm
 from facenet_pytorch import MTCNN

@@ -1,51 +1,38 @@
+""" Inspired from https://github.com/cppxaxa/FaceRecognitionPipeline_GeeksForGeeks"""
+
 import io
 import os
 import math
+import time
 from PIL import Image
 from sklearn.cluster import DBSCAN
-from imutils import build_montages, paths
 import numpy as np
-import os
-import pickle
 import cv2
 import shutil
-import time
 from tqdm import tqdm
 from moviepy.editor import *
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-
 from google.cloud import videointelligence_v1 as videointelligence
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "C:\\Users\\USER\\AppData\\Roaming\\gcloud\\application_default_credentials.json"
 
-IMGS_PER_FACE = 10
+IMGS_PER_FACE = 5
 
-''' Common utilities '''
-'''
-Credits: AndyP at StackOverflow
-The ResizeUtils provides resizing function to keep the aspect ratio intact
-
-class ResizeUtils:
-    # Given a target height, adjust the image by calculating the width and resize
-    def rescale_by_height(self, image, target_height, method=cv2.INTER_LANCZOS4):
-        """Rescale `image` to `target_height` (preserving aspect ratio)."""
-        w = int(round(target_height * image.shape[1] / image.shape[0]))
-        return cv2.resize(image, (w, target_height), interpolation=method)
-
-    # Given a target width, adjust the image by calculating the height and resize
-    def rescale_by_width(self, image, target_width, method=cv2.INTER_LANCZOS4):
-        """Rescale `image` to `target_width` (preserving aspect ratio)."""
-        h = int(round(target_width * image.shape[0] / image.shape[1]))
-        return cv2.resize(image, (target_width, h), interpolation=method)
-'''
-
-def detect_faces(gcs_uri):
+def detect_faces(path):
     """Detects faces in a video."""
+    
+    """ GOOGLE CLOUD VIDEO ANNOTATION API """
     
     client = videointelligence.VideoIntelligenceServiceClient()
 
+    if not path.startswith("gs"):
+        with io.open(path, "rb") as f:
+            input_content = f.read()
+    else:
+        input_content = path
+    
     # Configure the request
     config = videointelligence.FaceDetectionConfig(
         include_bounding_boxes=True, include_attributes=False
@@ -53,35 +40,49 @@ def detect_faces(gcs_uri):
     context = videointelligence.VideoContext(face_detection_config=config)
 
     # Start the asynchronous request
-    operation = client.annotate_video(
-        request={
-            "features": [videointelligence.Feature.FACE_DETECTION],
-            "input_uri": gcs_uri,
-            "video_context": context,
-        }
-    )
+    if not path.startswith("gs"):
+        operation = client.annotate_video(
+            request={
+                "features": [videointelligence.Feature.FACE_DETECTION],
+                "input_content": input_content,
+                "video_context": context,
+            }
+        )
+    else: 
+        operation = client.annotate_video(
+            request={
+                "features": [videointelligence.Feature.FACE_DETECTION],
+                "input_uri": input_content,
+                "video_context": context,
+            }
+        )
+        
 
     print("\nProcessing video for face detection annotations.")
-    result = operation.result(timeout=10000)
+    result = operation.result(timeout=1000000)
 
     print("\nFinished processing.\n")
 
     # Retrieve the first result, because a single video was processed.
     return result.annotation_results[0]
-
-def extract_faces(annotation_result,movie_name,gcs_uri,output):
+    
+def extract_faces(annotation_result,movie_name,path,output):
     """ Extract faces pictures to a folder """
-    if os.path.exists(output):
-        shutil.rmtree(output)
-        time.sleep(0.5)
-    os.mkdir(output)
+    if not os.path.exists(output):
+        os.mkdir(output)
     faces_dir = os.path.join(output,"Faces")
+    if os.path.exists(faces_dir):
+        shutil.rmtree(faces_dir)
+        time.sleep(0.5)
     os.mkdir(faces_dir)
     all_dir = os.path.join(faces_dir,"all")
+    if os.path.exists(all_dir):
+        shutil.rmtree(all_dir)
+        time.sleep(0.5)
     os.mkdir(all_dir)
     
-    # TODO movie = UPLOAD FROM GOOGLE CLOUD
-    movie = VideoFileClip(str("D:\\OneDrive\\OneDrive - mail.tau.ac.il\\python\\face_detection\\" + movie_name + ".mp4"))
+    """ If movie is in Google Cloud, for this beta version need a local path for the extraction"""
+    movie = VideoFileClip(path)
     i = 0
     
     for annotation in tqdm(annotation_result.face_detection_annotations, desc = "faces extracting"):
@@ -113,30 +114,78 @@ def extract_faces(annotation_result,movie_name,gcs_uri,output):
                     
                     crop_im = im.crop((box.left*width, box.top*height, box.right*width, box.bottom*height))
                     
-                    #TODO keep the same ratios and sizes
-                    """ def AutoResize(self, frame):
-            resizeUtils = ResizeUtils()
-
-            height, width, _ = frame.shape
-
-            if height > 500:
-                frame = resizeUtils.rescale_by_height(frame, 500)
-                self.AutoResize(frame)
-            
-            if width > 700:
-                frame = resizeUtils.rescale_by_width(frame, 700)
-                self.AutoResize(frame)
-            
-            return frame """
-                    
                     crop_im.save(face_path)
                     os.remove(frame)
                     
     return os.path.join(output,"Faces")
-"""
-# Option - using mediapipe landmarks
+
+def mp_detect_and_extract(path,output):
+    
+    """ DETECT AND EXTRACT THE IMAGES USING MEDIAPIPE """
+    
+    if os.path.exists(output):
+        shutil.rmtree(output)
+        time.sleep(0.5)
+    os.mkdir(output)
+    faces_dir = os.path.join(output,"Faces")
+    os.mkdir(faces_dir)
+    all_dir = os.path.join(faces_dir,"all")
+    os.mkdir(all_dir)
+    
+    print("opened main dir")
+    
+    # Create an FaceDetector object.
+    BaseOptions = mp.tasks.BaseOptions
+    FaceDetector = mp.tasks.vision.FaceDetector
+    FaceDetectorOptions = mp.tasks.vision.FaceDetectorOptions
+    VisionRunningMode = mp.tasks.vision.RunningMode
+    
+    options = FaceDetectorOptions(
+        base_options=BaseOptions(model_asset_path='blaze_face_short_range.tflite'),
+        running_mode=VisionRunningMode.VIDEO, min_detection_confidence=0.2,min_suppression_threshold=0)
+    
+    print("created detector")
+    
+    #load the video file
+    movie = cv2.VideoCapture(path)
+    frame_index = 0
+    total_faces = 0
+    video_file_fps = movie.get(cv2.CAP_PROP_FPS)
+    
+    print("loaded movie ", movie, " fps = ", video_file_fps)
+    with FaceDetector.create_from_options(options) as detector:
+        while movie.isOpened:
+            frame_index +=1
+            ret, frame = movie.read()
+            if not ret:
+                print("Can't receive frame (stream end?). Exiting ...")
+                break
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.array(frame))
+            frame_timestamp_ms = int(1000 * frame_index / video_file_fps)
+            # Perform face detection on the provided single image.
+            # The face detector must be created with the video mode.
+            face_detector_result = detector.detect_for_video(mp_image, frame_timestamp_ms)
+            face_index = 0
+            print("detected ", len(face_detector_result.detections), " faces in frame number ", frame_index)
+            for detection in face_detector_result.detections:
+                face_index += 1
+                total_faces += 1
+                bbox = detection.bounding_box
+                # Cropping an image
+                cropped_image = frame[bbox.origin_y:bbox.origin_y + bbox.height, bbox.origin_x:bbox.origin_x + bbox.width]
+                face_path = os.path.join(all_dir,str(frame_index)+"_"+str(face_index)+".jpg")
+                # Save the cropped image
+                cv2.imwrite(face_path, cropped_image)
+        
+    print(total_faces, " faces extracted")
+    return os.path.join(output,"Faces")
+            
+
+
 
 def landmark(faces_dir):
+    """ Option - using mediapipe landmarks """
+    
     #Create an FaceLandmarker object.
     base_options = python.BaseOptions(model_asset_path='face_landmarker.task')
     options = vision.FaceLandmarkerOptions(base_options=base_options,
@@ -156,7 +205,7 @@ def landmark(faces_dir):
         dict[id] = (img_path,[landmark for landmark in detection_result.face_landmarks])
         
     return dict
-"""
+
         
 def cluster(embeddings):
 
@@ -184,12 +233,12 @@ def cluster(embeddings):
                 flat_landmarks.append(0)
             landmarks_mat.append(flat_landmarks)
             print("couldn`t find face in image number ", id)
-    #print(landmarks_mat)
+            
     """
     
     # cluster the embeddings
-    clt = DBSCAN(eps=0.8, metric="euclidean", min_samples=IMGS_PER_FACE)
-    clt.fit(embeddings)
+    clt = DBSCAN(eps=0.75, metric="euclidean", min_samples=IMGS_PER_FACE+1)
+    clt = clt.fit(embeddings)
 
     # determine the total number of unique faces found in the dataset
     labelIDs = np.unique(clt.labels_)
@@ -200,9 +249,14 @@ def cluster(embeddings):
 
 def split_images(labels,faces_path):
     opened_labels = {}
-    os.mkdir(os.path.join(faces_path,"clustered"))
+    clusters_path = os.path.join(faces_path,"clustered")
+    if os.path.exists(clusters_path):
+        shutil.rmtree(clusters_path)
+        time.sleep(0.5)
+    os.mkdir(clusters_path)
     faces = os.listdir(os.path.join(faces_path,"all"))
-    for i in range(len(faces)):
+    
+    for i in tqdm(range(len(faces)), desc = "faces clustering"):
         label = labels[i]
         if label not in opened_labels:
             opened_labels[label] = 0
@@ -211,3 +265,4 @@ def split_images(labels,faces_path):
         src = os.path.join(faces_path,"all",faces[i])
         dst = os.path.join(faces_path,"clustered",str(label),faces[i])
         shutil.copy(src, dst)
+                    

@@ -9,6 +9,16 @@ tqdm
 networkx
 plotly
 scikit-learn
+numpy
+facenet_pytorch
+imutils
+moviepy
+mediapipe
+re
+time
+shutil
+math
+cv2
 hmni
 thefuzz
 psutil

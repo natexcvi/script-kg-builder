@@ -3,3 +3,10 @@ results
 .vscode
 script-kg-builder
 .DS_Store
+.venv
+**/*.mp4
+**/*.jpg
+**/*.zip
+**/*.rar
+**/*.jpeg
+**/*.script
